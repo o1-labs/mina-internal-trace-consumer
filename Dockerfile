@@ -5,6 +5,7 @@ ARG BASE_IMAGE_VERSION=bookworm
 ARG BUILD_IMAGE=ocaml/opam
 #ARG BUILD_IMAGE_VERSION=alpine-3.17-ocaml-4.14
 ARG BUILD_IMAGE_VERSION=debian-12-ocaml-4.14
+ARG RUST_VERSION=1.82.0
 ## The above default works if the built machine doesn't change and keeps layers cached.
 ## Alternatively, `build.Dockerfile` can be used to prepare a builder image to use as a base.
 ## docker build . -t internal-trace-consumer:build --target builder
@@ -15,9 +16,9 @@ ARG BUILD_IMAGE_VERSION=debian-12-ocaml-4.14
 FROM ${BUILD_IMAGE}:${BUILD_IMAGE_VERSION} AS builder
 
 #RUN sudo apk add linux-headers sqlite sqlite-dev
-RUN sudo apt-get update && sudo apt-get install -y pkg-config sqlite3 libsqlite3-dev libpq-dev
+RUN sudo apt-get update && sudo apt-get install -y pkg-config sqlite3 libsqlite3-dev libpq-dev  && sudo apt clean && sudo rm -rf /var/lib/apt/lists/*
 COPY --chown=opam opam.export .
-RUN opam switch import --unlock-base opam.export
+RUN sudo chown -R opam:opam /home/opam/.opam && opam update && opam switch import --unlock-base opam.export
 
 FROM builder AS intermediate
 
@@ -26,7 +27,7 @@ COPY --chown=opam:opam . /src/code
 RUN cd /src/code && opam exec -- dune build src/internal_trace_consumer.exe
 
 ## Remote trace fetcher program (Rust)
-FROM rust:1.69.0-${BASE_IMAGE_VERSION} AS rust-builder
+FROM rust:${RUST_VERSION}-${BASE_IMAGE_VERSION} AS rust-builder
 
 WORKDIR /app
 
