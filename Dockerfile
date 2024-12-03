@@ -14,46 +14,47 @@ ARG RUST_VERSION=1.82.0
 
 ## Trace consumer program (OCaml)
 FROM ${BUILD_IMAGE}:${BUILD_IMAGE_VERSION} AS builder
-
 #RUN sudo apk add linux-headers sqlite sqlite-dev
-RUN sudo apt-get update && sudo apt-get install -y pkg-config sqlite3 libsqlite3-dev libpq-dev  && sudo apt clean && sudo rm -rf /var/lib/apt/lists/*
+USER root
+RUN apt-get update \
+  && apt-get install -y libpq-dev libsqlite3-dev pkg-config sqlite3 \
+  && rm -rf /var/lib/apt/lists/*
+USER opam
 COPY --chown=opam opam.export .
-RUN sudo chown -R opam:opam /home/opam/.opam && opam update && opam switch import --unlock-base opam.export
+RUN sudo chown -R opam:opam /home/opam/.opam \
+  && opam update \
+  && opam switch import --unlock-base opam.export
 
 FROM builder AS intermediate
-
 WORKDIR /src
 COPY --chown=opam:opam . /src/code
-RUN cd /src/code && opam exec -- dune build src/internal_trace_consumer.exe
+WORKDIR /src/code
+RUN opam exec -- dune build src/internal_trace_consumer.exe
 
 ## Remote trace fetcher program (Rust)
 FROM rust:${RUST_VERSION}-${BASE_IMAGE_VERSION} AS rust-builder
-
 WORKDIR /app
-
 #RUN apk add --no-cache libgcc libstdc++ openssl openssl-dev musl-dev
-RUN apt-get update && apt-get install -y pkg-config libssl-dev
-
+RUN apt-get update \
+  && apt-get install -y pkg-config libssl-dev \
+  && rm -rf /var/lib/apt/lists/*
 COPY ./internal-log-fetcher/Cargo.toml ./internal-log-fetcher/Cargo.lock ./
 COPY ./internal-log-fetcher/src ./src
 COPY ./internal-log-fetcher/graphql ./graphql
-
 # These RUSTFLAGS are required to properly build an alpine binary
 # linked to OpenSSL that doesn't segfault
 RUN env RUSTFLAGS="-C target-feature=-crt-static" cargo build --release
 
 ## Final image
 FROM ${BASE_IMAGE}:${BASE_IMAGE_VERSION} AS app
-
 #RUN apk add --no-cache libgcc libstdc++ openssl sqlite-libs
-RUN apt-get update && apt-get install -y libssl3 libpq5 libsqlite3-0 ca-certificates
-
+RUN apt-get update \
+  && apt-get install -y ca-certificates libpq5 libsqlite3-0 libssl3 \
+  && rm -rf /var/lib/apt/lists/*
 COPY ./entrypoint.sh /entrypoint.sh
 COPY --from=rust-builder /app/target/release/internal-log-fetcher /internal_log_fetcher
 COPY --from=intermediate /src/code/_build/default/src/internal_trace_consumer.exe /internal_trace_consumer
 
 EXPOSE 9080
-
 ENTRYPOINT [ "/entrypoint.sh" ]
-
 CMD [ "consumer", "serve", "--trace-file", "/traces/internal-trace.jsonl", "--port", "9080" ]
