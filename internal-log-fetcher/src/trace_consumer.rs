@@ -1,8 +1,8 @@
 // Copyright (c) Viable Systems
 // SPDX-License-Identifier: Apache-2.0
 
+use std::env;
 use std::{fs::OpenOptions, path::PathBuf};
-
 use tokio::process::Command;
 
 pub mod internal_trace_file {
@@ -41,6 +41,8 @@ impl TraceConsumer {
 
     pub async fn run(&mut self) -> tokio::io::Result<tokio::process::Child> {
         let base_path = self.main_trace_file_path.parent().unwrap().to_path_buf();
+        let handle_status_change =
+            env::var("HANDLE_STATUS_CHANGE").unwrap_or_else(|_| "false".to_string());
 
         let stdout_log_file = OpenOptions::new()
             .create(true)
@@ -63,6 +65,8 @@ impl TraceConsumer {
             .arg(&self.db_uri)
             .arg("--port")
             .arg(format!("{}", self.graphql_port))
+            .arg("--handle-status-change")
+            .arg(&handle_status_change)
             .stdout(stdout_log_file)
             .stderr(stderr_log_file)
             .kill_on_drop(true)
