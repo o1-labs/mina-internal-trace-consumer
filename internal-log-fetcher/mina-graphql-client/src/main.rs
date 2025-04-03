@@ -1,15 +1,17 @@
-use structopt::StructOpt;
-use mina_graphql_client::{MinaClientConfig, MinaGraphQLClient};
 use anyhow::Result;
+use mina_graphql_client::{MinaClientConfig, MinaGraphQLClient, ZkappCommandsDetails};
+use structopt::StructOpt;
 use url::Url;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "mina-graphql-client", about = "Debug utility for mina internal qraphql interface.")]
+#[structopt(
+    name = "mina-graphql-client",
+    about = "Debug utility for mina internal qraphql interface."
+)]
 struct Cli {
     #[structopt(name = "secret-key", env = "KEY")]
     /// The secret key used to sign the request in base64 format.
     secret_key: String,
-    
 
     #[structopt(name = "address", env = "ADDRESS")]
     /// Address in format `host:port` of the graphql server.
@@ -19,9 +21,77 @@ struct Cli {
     cmd: Command,
 }
 
+#[derive(Debug, StructOpt)]
+struct InputZkappCommandsDetails {
+    #[structopt(long, short, default_value = "2")]
+    max_account_updates: i64,
 
+    #[structopt(long, short)]
+    max_cost: bool,
 
-#[derive(Debug,StructOpt)]
+    #[structopt(long, short, default_value = "0")]
+    account_queue_size: i64,
+
+    #[structopt(long, short, default_value = "1000000000")]
+    deployment_fee: i64,
+
+    #[structopt(long, short, default_value = "2000000000")]
+    max_fee: i64,
+
+    #[structopt(long, short, default_value = "1000000000")]
+    min_fee: i64,
+    #[structopt(long, short, default_value = "6000360000")]
+    init_balance: i64,
+    #[structopt(long, short, default_value = "3000180000")]
+    max_new_zkapp_balance: i64,
+    #[structopt(long, short, default_value = "1000060000")]
+    min_new_zkapp_balance: i64,
+    #[structopt(long, short, default_value = "1000")]
+    max_balance_change: i64,
+    #[structopt(long, short, default_value = "0")]
+    min_balance_change: i64,
+    #[structopt(long, short)]
+    no_precondition: bool,
+    #[structopt(long, short, default_value = "test")]
+    memo_prefix: String,
+    #[structopt(long, short, default_value = "30")]
+    duration_min: i64,
+    #[structopt(long, short, default_value = "0.25")]
+    tps: f64,
+    #[structopt(long, short, default_value = "0")]
+    num_new_accounts: i64,
+    #[structopt(long, short, default_value = "8")]
+    num_zkapps_to_deploy: i64,
+    #[structopt(long, short, default_value = "Vec::new()")]
+    fee_payers: Vec<String>,
+}
+
+impl Into<ZkappCommandsDetails> for InputZkappCommandsDetails {
+    fn into(self) -> ZkappCommandsDetails {
+        ZkappCommandsDetails {
+            max_account_updates: self.max_account_updates,
+            max_cost: self.max_cost,
+            account_queue_size: self.account_queue_size,
+            deployment_fee: self.deployment_fee,
+            max_fee: self.max_fee,
+            min_fee: self.min_fee,
+            init_balance: self.init_balance,
+            max_new_zkapp_balance: self.max_new_zkapp_balance,
+            min_new_zkapp_balance: self.min_new_zkapp_balance,
+            max_balance_change: self.max_balance_change,
+            min_balance_change: self.min_balance_change,
+            no_precondition: self.no_precondition,
+            memo_prefix: self.memo_prefix,
+            duration_min: self.duration_min,
+            tps: self.tps,
+            num_new_accounts: self.num_new_accounts,
+            num_zkapps_to_deploy: self.num_zkapps_to_deploy,
+            fee_payers: self.fee_payers,
+        }
+    }
+}
+
+#[derive(Debug, StructOpt)]
 enum Command {
     /// Authenticate with the server only.
     Auth,
@@ -32,7 +102,7 @@ enum Command {
     /// Reset zkapp soft limit.
     ResetZkappSoftLimit,
     /// Schedule zkapp payments.
-    ScheduleZkappPayments,
+    ScheduleZkappPayments(InputZkappCommandsDetails),
 }
 
 #[tokio::main]
@@ -59,7 +129,7 @@ async fn main() -> Result<()> {
         Command::FetchMoreLogs => {
             client.authorize().await?;
             println!("authorized");
-            let (last_log_id,logs) = client.fetch_more_logs().await?;
+            let (last_log_id, logs) = client.fetch_more_logs().await?;
             println!("last log id: {}", last_log_id);
             println!("logs: {:#?}", logs);
         }
@@ -74,13 +144,12 @@ async fn main() -> Result<()> {
             println!("authorized");
             client.reset_zkapp_soft_limit_query().await?;
         }
-        Command::ScheduleZkappPayments => {
+        Command::ScheduleZkappPayments(cmd) => {
             client.authorize().await?;
             println!("authorized");
-            client.schedule_zkapp_payments().await?;
+            client.schedule_zkapp_payments(cmd.into()).await?;
         }
     };
 
     Ok(())
 }
-

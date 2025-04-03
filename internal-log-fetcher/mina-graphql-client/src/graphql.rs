@@ -38,12 +38,10 @@ pub struct AuthQuery;
 )]
 pub struct ResetZkappSoftLimitQuery;
 
-
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "graphql/schema.graphql",
     query_path = "graphql/schedule_zkapp_commands.graphql",
     response_derives = "Debug"
-
 )]
 pub struct ScheduleZkappCommandsQuery;
