@@ -23,46 +23,46 @@ struct Cli {
 
 #[derive(Debug, StructOpt)]
 struct InputZkappCommandsDetails {
-    #[structopt(long, short, default_value = "2")]
+    #[structopt(long, default_value = "2")]
     max_account_updates: i64,
 
-    #[structopt(long, short)]
+    #[structopt(long)]
     max_cost: bool,
 
-    #[structopt(long, short, default_value = "0")]
+    #[structopt(long, default_value = "0")]
     account_queue_size: i64,
 
-    #[structopt(long, short, default_value = "1000000000")]
+    #[structopt(long, default_value = "1000000000")]
     deployment_fee: i64,
 
-    #[structopt(long, short, default_value = "2000000000")]
+    #[structopt(long, default_value = "2000000000")]
     max_fee: i64,
 
-    #[structopt(long, short, default_value = "1000000000")]
+    #[structopt(long, default_value = "1000000000")]
     min_fee: i64,
-    #[structopt(long, short, default_value = "6000360000")]
+    #[structopt(long, default_value = "6000360000")]
     init_balance: i64,
-    #[structopt(long, short, default_value = "3000180000")]
+    #[structopt(long, default_value = "3000180000")]
     max_new_zkapp_balance: i64,
-    #[structopt(long, short, default_value = "1000060000")]
+    #[structopt(long, default_value = "1000060000")]
     min_new_zkapp_balance: i64,
-    #[structopt(long, short, default_value = "1000")]
+    #[structopt(long, default_value = "1000")]
     max_balance_change: i64,
-    #[structopt(long, short, default_value = "0")]
+    #[structopt(long, default_value = "0")]
     min_balance_change: i64,
-    #[structopt(long, short)]
+    #[structopt(long)]
     no_precondition: bool,
-    #[structopt(long, short, default_value = "test")]
+    #[structopt(long, default_value = "test")]
     memo_prefix: String,
-    #[structopt(long, short, default_value = "30")]
+    #[structopt(long, default_value = "30")]
     duration_min: i64,
-    #[structopt(long, short, default_value = "0.25")]
+    #[structopt(long, default_value = "0.25")]
     tps: f64,
-    #[structopt(long, short, default_value = "0")]
+    #[structopt(long, default_value = "0")]
     num_new_accounts: i64,
-    #[structopt(long, short, default_value = "8")]
+    #[structopt(long, default_value = "8")]
     num_zkapps_to_deploy: i64,
-    #[structopt(long, short, default_value = "Vec::new()")]
+    #[structopt(long, default_value = "Vec::new()")]
     fee_payers: Vec<String>,
 }
 
