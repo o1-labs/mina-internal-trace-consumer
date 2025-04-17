@@ -110,7 +110,6 @@ impl MinaGraphQLClient {
             .send()
             .await?;
 
-        println!("DEBUG RESPONSE: {:#?}", response);
         Ok(response.text().await?)
     }
 
