@@ -281,7 +281,7 @@ impl Manager {
         };
         let consumer_executable_path = self.consumer_executable_path.clone().into();
         let active = Arc::clone(&node_state.active);
-        let _is_block_producer = Arc::clone(&node_state.is_block_producer);
+        
         tokio::spawn(async move {
             let mut mina_server = mina_server::MinaServer::new(config);
             let fetch_loop_handle = mina_server.authorize_and_run_fetch_loop();
