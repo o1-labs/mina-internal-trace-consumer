@@ -110,11 +110,11 @@ async fn main() -> Result<()> {
     let opt = Cli::from_args();
 
     let error_msg = "Invalid address format, expected http(s)://host:port";
-    let url = Url::parse(&opt.address).expect("error_msg");
+    let url = Url::parse(&opt.address).expect(error_msg);
 
     let config = MinaClientConfig {
         address: url.host_str().expect(error_msg).to_string(),
-        graphql_port: url.port_or_known_default().expect("port"),
+        graphql_port: url.port_or_known_default().expect("Missing or invalid port in the address"),
         use_https: url.scheme() == "https",
         secret_key_base64: opt.secret_key,
     };
