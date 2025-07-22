@@ -134,8 +134,7 @@ impl MinaGraphQLClient {
             .send()
             .await?;
 
-        println!("DEBUG RESPONSE: {:#?}", response);
-        Ok(response.json().await?)
+        debug!("GraphQL response: {:#?}", response);
     }
 
     pub async fn reset_zkapp_soft_limit_query(&self) -> Result<()> {
