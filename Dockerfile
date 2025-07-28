@@ -20,11 +20,9 @@ RUN apt-get update \
   && apt-get install -y libpq-dev libsqlite3-dev pkg-config sqlite3 \
   && rm -rf /var/lib/apt/lists/*
 USER opam
-COPY --chown=opam opam.export .
 RUN sudo chown -R opam:opam /home/opam/.opam \
   && opam update \
-  && opam switch import --unlock-base --dry-run opam.export || true \
-  && opam install --unlock-base dune async caqti caqti-async caqti-driver-postgresql caqti-driver-sqlite3 caqti-dynload cohttp cohttp-async core graphql-async graphql-cohttp result ppx_deriving_yojson core_unix time_unix
+  && opam install dune async async_unix async_kernel caqti caqti-async caqti-driver-postgresql caqti-driver-sqlite3 caqti-dynload cohttp cohttp-async core core_kernel core_unix graphql graphql-async graphql-cohttp graphql_parser ppx_deriving_yojson ppx_jane result sqlite3 uri astring base sexplib0 yojson stdio
 
 FROM builder AS intermediate
 WORKDIR /src
