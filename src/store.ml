@@ -1,14 +1,6 @@
 open Core
 open Async
 
-let node_name =
-  match Sys.getenv "MINA_NODE_NAME" with
-  | None ->
-      Log.Global.error "[WARN] no MINA_NODE_NAME specified, using \"unknown\"" ;
-      "unknown"
-  | Some name ->
-      name
-
 type checkpoint_entry =
   [ `Checkpoint of string * float | `Control of string * Yojson.Safe.t ]
 
@@ -77,6 +69,7 @@ module Persisted_block_trace = struct
 
   type t =
     { source : block_source
+    ; deployment_id : int
     ; blockchain_length : int
     ; global_slot : int
     ; status : status
@@ -88,6 +81,7 @@ module Persisted_block_trace = struct
 
   let from_block_trace
       ( { Block_trace.source
+        ; deployment_id
         ; blockchain_length
         ; global_slot
         ; status
@@ -97,7 +91,8 @@ module Persisted_block_trace = struct
         ; other_checkpoints = _
         } as t ) =
     { source
-    ; blockchain_length
+    ; deployment_id
+    ; blockchain_length 
     ; global_slot
     ; status
     ; started_at = started_at t
@@ -105,7 +100,7 @@ module Persisted_block_trace = struct
     ; metadata
     }
 
-  let add_pending_entries_to_block_trace ~parent_checkpoint pending_entries
+  let add_pending_entries_to_block_trace ~parent_checkpoint ~default_deployment_id pending_entries
       (trace : Block_trace.t) =
     (* these must be processed at the end *)
     let pending_kimchi_entries = ref [] in
@@ -117,8 +112,8 @@ module Persisted_block_trace = struct
           let trace =
             Block_trace.push ~status:trace.status ~source:trace.source
               ~target_trace:`Main
-              ~order:(`Chronological_after previous_checkpoint) current_entry
-              (Some trace)
+              ~order:(`Chronological_after previous_checkpoint) 
+              ~default_deployment_id current_entry (Some trace)
           in
           loop ~previous_checkpoint:checkpoint entries current_entry trace
       | `Control ("metadata", data) :: entries ->
@@ -147,7 +142,7 @@ module Persisted_block_trace = struct
       (Block_trace.Entry.make ~timestamp:0.0 "")
       trace
 
-  let integrate_extra_checkpoints trace ~(checkpoints : checkpoint_entry list) =
+  let integrate_extra_checkpoints trace ~default_deployment_id ~(checkpoints : checkpoint_entry list) =
     let first_checkpoint =
       match checkpoints with
       | `Checkpoint (name, _) :: _ ->
@@ -163,15 +158,16 @@ module Persisted_block_trace = struct
     | ( Some (parent_checkpoint, end_checkpoint)
       , Some (`Checkpoint (last_checkpoint, _)) )
       when String.equal end_checkpoint last_checkpoint ->
-        add_pending_entries_to_block_trace ~parent_checkpoint checkpoints trace
+        add_pending_entries_to_block_trace ~parent_checkpoint ~default_deployment_id checkpoints trace
     | _ ->
         trace
 
-  let integrate_extra_checkpoints trace ~checkpoints =
-    try integrate_extra_checkpoints trace ~checkpoints with Exit -> trace
+  let integrate_extra_checkpoints trace ~checkpoints ~default_deployment_id =
+    try integrate_extra_checkpoints trace ~checkpoints ~default_deployment_id with Exit -> trace
 
-  let to_block_trace ?(checkpoints = [])
+  let to_block_trace ?(checkpoints = []) ~default_deployment_id
       { source
+      ; deployment_id
       ; blockchain_length
       ; global_slot
       ; status
@@ -181,6 +177,7 @@ module Persisted_block_trace = struct
       } =
     let trace =
       { Block_trace.source
+      ; deployment_id
       ; blockchain_length
       ; global_slot
       ; status = `Pending
@@ -222,7 +219,9 @@ module Persisted_block_trace = struct
               let entry = Block_trace.Entry.make ~timestamp name in
               Block_trace.push
                 ~status:(Block_tracing.compute_status name)
-                ~source ~order:`Append ~target_trace:`Main entry (Some trace)
+                ~source ~order:`Append 
+                ~default_deployment_id
+                ~target_trace:`Main entry (Some trace)
           | `Control ("metadata", metadata) ->
               let metadata = Yojson.Safe.Util.to_assoc metadata in
               Block_trace.push_metadata ~metadata (Some trace)
@@ -234,14 +233,17 @@ module Persisted_block_trace = struct
       Int.Map.fold ~init:trace
         ~f:(fun ~key:_ ~data:checkpoints_rev trace ->
           integrate_extra_checkpoints trace
-            ~checkpoints:(List.rev checkpoints_rev) )
+            ~checkpoints:(List.rev checkpoints_rev)
+            ~default_deployment_id )
         prover_checkpoints
     in
     let trace =
       Int.Map.fold ~init:trace
         ~f:(fun ~key:_ ~data:checkpoints_rev trace ->
           integrate_extra_checkpoints trace
-            ~checkpoints:(List.rev checkpoints_rev) )
+            ~checkpoints:(List.rev checkpoints_rev)
+            ~default_deployment_id
+         )
         verifier_checkpoints
     in
     (*if not @@ List.is_empty prover_checkpoints then
@@ -260,6 +262,7 @@ module Persisted_block_trace = struct
   let to_block_trace_info
       ( state_hash
       , { source
+        ; deployment_id
         ; blockchain_length
         ; global_slot
         ; status
@@ -270,6 +273,7 @@ module Persisted_block_trace = struct
     Block_tracing.Registry.
       { state_hash
       ; source
+      ; deployment_id
       ; blockchain_length
       ; global_slot
       ; status
@@ -290,6 +294,13 @@ end
 module Q = struct
   open Caqti_request.Infix
   open Caqti_type.Std
+  
+  (* Use tup functions with deprecation warnings suppressed *)
+  [@@@warning "-3"]
+  let t2 = tup2
+  let t3 = tup3  
+  let t4 = tup4
+  [@@@warning "+3"]
 
   let block_id = Caqti_type.string
 
@@ -305,6 +316,7 @@ module Q = struct
         ; started_at
         ; total_time
         ; metadata
+        ; deployment_id
         } =
       let source = block_source_to_string source in
       let status = status_to_string status in
@@ -313,17 +325,18 @@ module Q = struct
       Ok
         ( (started_at, completed_at, total_time)
         , (source, blockchain_length, global_slot, status)
-        , metadata_json )
+        , (metadata_json, deployment_id)  )
     in
     let decode
         ( (started_at, _trace_completed_at, total_time)
         , (source, blockchain_length, global_slot, status)
-        , metadata_json ) =
+        , (metadata_json, deployment_id) ) =
       let status = status_from_string status in
       let metadata = Yojson.Safe.from_string metadata_json in
       let source = block_source_from_string source in
       Ok
         { source
+        ; deployment_id
         ; blockchain_length
         ; global_slot
         ; status
@@ -334,13 +347,13 @@ module Q = struct
     in
     let rep =
       Caqti_type.(
-        t3 (t3 float float float) (t4 string int int string) string)
+        t3 (t3 float float float ) (t4 string int int string)  (t2 string int) )
     in
     custom ~encode ~decode rep
 
-  let block_trace_with_id = Caqti_type.t2 block_trace_id block_trace
+  let block_trace_with_id = t2 block_trace_id block_trace
 
-  let block_trace_with_block_id = Caqti_type.t2 block_id block_trace
+  let block_trace_with_block_id = t2 block_id block_trace
 
   let block_trace_info =
     let open Block_tracing.Registry in
@@ -349,7 +362,7 @@ module Q = struct
         ( block_id
         , (source, blockchain_length, global_slot, status)
         , (started_at, total_time)
-        , metadata_json ) =
+        , (metadata_json, deployment_id) ) =
       let status = Block_trace.status_from_string status in
       let metadata = Yojson.Safe.from_string metadata_json in
       let source = Block_trace.block_source_from_string source in
@@ -361,12 +374,13 @@ module Q = struct
         ; status
         ; started_at
         ; total_time
+        ; deployment_id
         ; metadata
         }
     in
     let rep =
       Caqti_type.(
-        t4 string (t4 string int int string) (t2 float float) string)
+        t4 string (t4 string int int string) (t2 float float) (t2 string int) )
     in
     custom ~encode ~decode rep
 
@@ -412,93 +426,20 @@ module Q = struct
   let block_trace_checkpoint_with_trace_id =
     Caqti_type.(t3 block_trace_id bool block_trace_checkpoint)
 
-  let initialize_schema (engine : [ `Sqlite | `Postgres ]) =
-    let primary_key_int, json_type =
-      match engine with
-      | `Sqlite ->
-          ("integer PRIMARY KEY AUTOINCREMENT", "text")
-      | `Postgres ->
-          ("SERIAL PRIMARY KEY", "jsonb")
-    in
-    [ (unit ->. unit)
-      @@ sprintf
-           {eos|
-        CREATE TABLE IF NOT EXISTS block_trace (
-          block_trace_id %s,
-          node_name varchar NOT NULL,
-          block_id varchar NOT NULL,
-          trace_started_at float NOT NULL,
-          trace_completed_at float,
-          total_time float NOT NULL,
-          source varchar NOT NULL,
-          blockchain_length int NOT NULL,
-          global_slot int NOT NULL,
-          status varchar NOT NULL,
-          metadata_json %s NOT NULL
-        )
-      |eos}
-           primary_key_int json_type
-    ; (unit ->. unit)
-        {eos|
-        CREATE INDEX IF NOT EXISTS block_trace_block_id_idx
-        ON block_trace (block_id)
-      |eos}
-    ; (unit ->. unit)
-        {eos|
-        CREATE INDEX IF NOT EXISTS block_trace_node_name_idx
-        ON block_trace (node_name)
-      |eos}
-    ; (unit ->. unit)
-      @@ sprintf
-           {eos|
-        CREATE TABLE IF NOT EXISTS block_trace_checkpoint (
-          block_trace_checkpoint_id %s,
-          block_trace_id integer NOT NULL,
-          source char NOT NULL, -- M = main, V = verifier, P = prover
-          main_trace bool NOT NULL,
-          is_control bool NOT NULL,
-          name varchar NOT NULL,
-          started_at float NOT NULL,
-          metadata_json %s,
-          call_id int NOT NULL,
-          gossip bool not null default false,
-
-          FOREIGN KEY (block_trace_id) REFERENCES block_trace(block_trace_id)
-        )
-      |eos}
-           primary_key_int json_type
-    ; (unit ->. unit)
-        {eos|
-        CREATE INDEX IF NOT EXISTS block_trace_checkpoint_block_trace_id_main_trace_gossip
-        ON block_trace_checkpoint
-        (block_trace_id, main_trace) WHERE (NOT gossip)
-      |eos}
-    ; (unit ->. unit)
-        {eos|
-        CREATE TABLE IF NOT EXISTS data (
-          key varchar NOT NULL,
-          node_name varchar NOT NULL,
-          value text NOT NULL,
-
-          PRIMARY KEY (key, node_name)
-        )
-      |eos}
-    ]
-
+  
   let add_block_trace =
-    (block_trace_with_block_id ->! int)
-    @@ sprintf
+    (t2 string block_trace_with_block_id ->! int)
          {eos|
         INSERT INTO block_trace (
-          block_id, node_name,
+          node_name, block_id, 
           trace_started_at, trace_completed_at, total_time,
           source, blockchain_length, global_slot, status,
-          metadata_json
+          metadata_json, deployment_id
         )
-        VALUES (?, '%s', ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING block_trace_id
       |eos}
-         node_name
+        
 
   let update_block_trace =
     (t2 block_trace block_trace_id ->. unit)
@@ -511,33 +452,36 @@ module Q = struct
           blockchain_length = ?,
           global_slot = ?,
           status = ?,
-          metadata_json = ?
+          metadata_json = ?,
+          deployment_id = ?
         WHERE block_trace_id = ?
       |eos}
 
   let update_block_trace_block_id =
     (t2 block_id block_trace_id ->. unit)
       {eos|
-        UPDATE block_trace SET block_id = ? WHERE block_trace_id = ?
+        UPDATE block_trace SET block_id = ? 
+        WHERE 
+          block_trace_id = ? 
+          and deployment_id = get_max_deployment_id()
       |eos}
 
   let select_block_traces =
-    (block_id ->* block_trace_with_id)
-    @@ sprintf
-         {eos|
+    (t3 block_id string int ->* block_trace_with_id)
+      {eos|
         SELECT
           block_trace_id,
           trace_started_at, trace_completed_at, total_time,
           source, blockchain_length, global_slot, status,
-          CAST(metadata_json AS text) metadata_json
+          CAST(metadata_json AS text) metadata_json, deployment_id
         FROM block_trace
         WHERE block_id = ?
-          AND node_name = '%s'
+          AND node_name = ?
+          AND deployment_id = ?
         ORDER BY block_trace_id DESC
         LIMIT 1
       |eos}
-         node_name
-
+    
   let select_block_trace =
     (block_trace_id ->! block_trace_with_block_id)
       {eos|
@@ -545,68 +489,70 @@ module Q = struct
           block_id,
           trace_started_at, trace_completed_at, total_time,
           source, blockchain_length, global_slot, status,
-          CAST(metadata_json AS text) metadata_json
+          CAST(metadata_json AS text) metadata_json, deployment_id
         FROM block_trace
         WHERE block_trace_id = ?
       |eos}
 
   let base_block_traces_query =
     (* TODO use window function instead of INNER JOIN *)
-    sprintf
-      {eos|
+    {eos|
       SELECT
           bt.block_id,
           bt.source, bt.blockchain_length, bt.global_slot, bt.status,
           bt.trace_started_at, bt.total_time,
-          CAST(bt.metadata_json AS text) metadata_json
+          CAST(bt.metadata_json AS text) metadata_json, bt.deployment_id
       FROM block_trace bt
-      WHERE bt.node_name = '%s'
-      |eos}
-      node_name
+      WHERE bt.node_name = $1
+    |eos}
 
   let select_block_trace_info_entries_asc =
-    (t2 int int ->* block_trace_info)
+    (t3 string (t2 int int) int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
+      AND bt.deployment_id = $4
       ORDER BY bt.block_trace_id ASC
-      LIMIT ?
-      OFFSET ?
+      LIMIT $2
+      OFFSET $3
     |eos}
 
   let select_block_trace_info_entries_desc =
-    (t2 int int ->* block_trace_info)
-    @@ base_block_traces_query
+    (t3 string (t2 int int) int ->* block_trace_info)
+    @@ base_block_traces_query 
     ^ {eos|
+      AND bt.deployment_id = $4
       ORDER BY bt.block_trace_id DESC
-      LIMIT ?
-      OFFSET ?
+      LIMIT $2
+      OFFSET $3
     |eos}
 
   let select_block_trace_info_entries order =
     match order with
     | `Asc ->
-        select_block_trace_info_entries_asc
+        select_block_trace_info_entries_asc 
     | `Desc ->
-        select_block_trace_info_entries_desc
+        select_block_trace_info_entries_desc 
 
   let select_block_trace_info_entries_by_global_slot_asc =
-    (t4 int int int int ->* block_trace_info)
+    (t3 string (t4 int int int int) int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
-        AND bt.global_slot > $3 AND bt.global_slot <= $4
+        AND bt.global_slot > $4 AND bt.global_slot <= $5
+        AND bt.deployment_id = $6
       ORDER BY bt.block_trace_id ASC
-      LIMIT $1
-      OFFSET $2
+      LIMIT $2
+      OFFSET $3
     |eos}
 
   let select_block_trace_info_entries_by_global_slot_desc =
-    (t4 int int int int ->* block_trace_info)
+    (t3 string (t4 int int int int) int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
-        AND bt.global_slot > $3 AND bt.global_slot <= $4
+        AND bt.global_slot > $4 AND bt.global_slot <= $5
+        AND bt.deployment_id = $6
       ORDER BY bt.block_trace_id DESC
-      LIMIT $1
-      OFFSET $2
+      LIMIT $2
+      OFFSET $3
     |eos}
 
   let select_block_trace_info_entries_by_global_slot order =
@@ -617,23 +563,25 @@ module Q = struct
         select_block_trace_info_entries_by_global_slot_desc
 
   let select_block_trace_info_entries_by_height_asc =
-    (t4 int int int int ->* block_trace_info)
+    (t3 string (t4 int int int int) int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
-        AND bt.blockchain_length > $3 AND bt.blockchain_length <= $4
+        AND bt.blockchain_length > $4 AND bt.blockchain_length <= $5
+        AND bt.deployment_id = $6
       ORDER BY bt.block_trace_id ASC
-      LIMIT $1
-      OFFSET $2
+      LIMIT $2
+      OFFSET $3
     |eos}
 
   let select_block_trace_info_entries_by_height_desc =
-    (t4 int int int int ->* block_trace_info)
+    (t3 string (t4 int int int int) int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
-        AND bt.blockchain_length > $3 AND bt.blockchain_length <= $4
+        AND bt.blockchain_length > $4 AND bt.blockchain_length <= $5
+        AND bt.deployment_id = $6
       ORDER BY bt.block_trace_id DESC
-      LIMIT $1
-      OFFSET $2
+      LIMIT $2
+      OFFSET $3
     |eos}
 
   let select_block_trace_info_entries_by_height order =
@@ -670,36 +618,34 @@ module Q = struct
       |eos}
 
   let set_value =
-    (t2 string string ->. unit)
-    @@ sprintf
+    (t3 string string string ->. unit)
          {eos|
-        INSERT INTO data (key, node_name, value) VALUES (?, '%s', ?)
-        ON CONFLICT (key, node_name) DO UPDATE SET value = excluded.value
+        INSERT INTO data (key, deployment_id, value, node_name) VALUES (?, get_max_deployment_id() , ?, ?)
+        ON CONFLICT (key, deployment_id, node_name) DO UPDATE SET value = excluded.value
       |eos}
-         node_name
+    
+
+  let get_current_deployment_id =
+    (unit ->! int) {eos| SELECT get_max_deployment_id() |eos}
+
+  let get_deployments_ids =
+    (unit ->* int) {eos| SELECT deployment_id from deployment |eos}
 
   let get_value =
-    (string ->? string)
-    @@ sprintf
-         {eos| SELECT value FROM data WHERE node_name = '%s' AND key = ? |eos}
-         node_name
+    (t3 string string int ->? string)
+         {eos| SELECT value FROM data WHERE node_name = ? AND key = ? AND deployment_id = ? |eos}
+
+
+  let get_nodes_names =
+    (int ->* (t2 string int) )
+         {eos| SELECT node_name, deployment_id FROM data WHERE deployment_id = ? |eos}
 end
 
-let initialize_database engine (module Db : Caqti_async.CONNECTION) =
-  Q.initialize_schema engine
-  |> Deferred.List.fold ~init:(Ok ()) ~f:(fun acc q ->
-         if Result.is_error acc then Deferred.return acc else Db.exec q () )
+let add_block_trace block_id trace node_name (module Db : Caqti_async.CONNECTION) =
+  Db.find Q.add_block_trace (node_name, (block_id, trace) )
 
-let initialize_database engine =
-  Connection_context.use_current (initialize_database engine)
-
-let add_block_trace block_id trace (module Db : Caqti_async.CONNECTION) =
-  (*printf "!!! adding block trace with source: %s\n%!"
-    (Block_trace.block_source_to_string trace.Persisted_block_trace.source) ;*)
-  Db.find Q.add_block_trace (block_id, trace)
-
-let add_block_trace block_id trace =
-  Connection_context.use_current (add_block_trace block_id trace)
+let add_block_trace block_id trace node_name =
+  Connection_context.use_current (add_block_trace block_id trace node_name)
 
 let update_block_trace block_trace_id trace (module Db : Caqti_async.CONNECTION)
     =
@@ -708,11 +654,11 @@ let update_block_trace block_trace_id trace (module Db : Caqti_async.CONNECTION)
 let update_block_trace block_trace_id trace =
   Connection_context.use_current (update_block_trace block_trace_id trace)
 
-let get_block_traces block_id (module Db : Caqti_async.CONNECTION) =
-  Db.collect_list Q.select_block_traces block_id
+let get_block_traces block_id deployment_id node_name (module Db : Caqti_async.CONNECTION) =
+  Db.collect_list Q.select_block_traces (block_id, node_name, deployment_id)
 
-let get_block_traces block_id =
-  Connection_context.use_current (get_block_traces block_id)
+let get_block_traces block_id deployment_id node_name =
+  Connection_context.use_current (get_block_traces block_id node_name deployment_id)
 
 let get_block_trace_by_id block_trace_id (module Db : Caqti_async.CONNECTION) =
   Db.find Q.select_block_trace block_trace_id
@@ -721,29 +667,29 @@ let get_block_trace_by_id block_trace_id =
   Connection_context.use_current (get_block_trace_by_id block_trace_id)
 
 let get_block_trace_info_entries ?(max_length = 10_000) ?(offset = 0) ?height
-    ?global_slot ?(chain_length = 1) ?(order = `Asc)
+    ?global_slot ?(chain_length = 1) ?(order = `Asc) deployment_id node_name
     (module Db : Caqti_async.CONNECTION) =
   match (global_slot, height) with
   | Some global_slot_end, _ ->
       let global_slot_start = global_slot_end - chain_length in
       Db.collect_list
         (Q.select_block_trace_info_entries_by_global_slot order)
-        (max_length, offset, global_slot_start, global_slot_end)
+        (node_name, (max_length, offset, global_slot_start, global_slot_end), deployment_id)
   | None, Some height_end ->
       let height_start = height_end - chain_length in
       Db.collect_list
         (Q.select_block_trace_info_entries_by_height order)
-        (max_length, offset, height_start, height_end)
+        (node_name, (max_length, offset, height_start, height_end), deployment_id)
   | None, None ->
       Db.collect_list
         (Q.select_block_trace_info_entries order)
-        (max_length, offset)
+        (node_name, (max_length, offset), deployment_id)
 
 let get_block_trace_info_entries ?max_length ?offset ?height ?global_slot
-    ?chain_length ?order () =
+    ?chain_length ?order deployment_id node_name () =
   Connection_context.use_current
     (get_block_trace_info_entries ?max_length ?offset ?height ?global_slot
-       ?chain_length ?order )
+       ?chain_length ?order deployment_id node_name)
 
 let add_block_trace_checkpoint block_trace_id is_main source call_id checkpoint
     (module Db : Caqti_async.CONNECTION) =
@@ -771,15 +717,35 @@ let update_block_trace_block_id block_trace_id block_id =
   Connection_context.use_current
     (update_block_trace_block_id block_trace_id block_id)
 
-let set_value key value (module Db : Caqti_async.CONNECTION) =
-  Db.exec Q.set_value (key, value)
+let set_value key node_name value (module Db : Caqti_async.CONNECTION) =
+  Db.exec Q.set_value (key, node_name, value)
 
-let set_value key value = Connection_context.use_current (set_value key value)
+let set_value key node_name value = Connection_context.use_current (set_value key node_name value)
 
-let get_value key (module Db : Caqti_async.CONNECTION) =
-  Db.find_opt Q.get_value key
+ 
+let get_current_deployment_id () (module Db : Caqti_async.CONNECTION) =
+  Db.find_opt Q.get_current_deployment_id ()
 
-let get_value key = Connection_context.use_current (get_value key)
+let get_current_deployment_id () =
+  Connection_context.use_current (get_current_deployment_id ())
+
+let get_all_deployments_ids () (module Db : Caqti_async.CONNECTION) =
+  Db.collect_list Q.get_deployments_ids ()
+  
+let get_all_deployments_ids () =
+  Connection_context.use_current (get_all_deployments_ids ())
+
+let get_nodes_names deployment_id (module Db : Caqti_async.CONNECTION) =
+  Db.collect_list Q.get_nodes_names deployment_id
+
+let get_nodes_names deployment_id =
+  Connection_context.use_current ( get_nodes_names deployment_id )
+  
+
+let get_value key deployment_id node_name (module Db : Caqti_async.CONNECTION) =
+  Db.find_opt Q.get_value (deployment_id, node_name, key)
+
+let get_value key deployment_id node_name = Connection_context.use_current (get_value deployment_id node_name key)
 
 module Testing = struct
   let report_error = function
@@ -791,9 +757,9 @@ module Testing = struct
 
   let test_db () =
     let open Deferred.Result.Let_syntax in
-    let%bind () = initialize_database `Sqlite in
     let trace =
       { Persisted_block_trace.source = `External
+      ; deployment_id = 1
       ; blockchain_length = 11
       ; global_slot = 20
       ; started_at = 12345.0
@@ -802,12 +768,12 @@ module Testing = struct
       ; metadata = `Assoc []
       }
     in
-    let%bind block_trace_0_id = add_block_trace "test-1" trace in
-    let%bind block_trace_1_id = add_block_trace "test-2" trace in
+    let%bind block_trace_0_id = add_block_trace "test-1" trace "node-1" in
+    let%bind block_trace_1_id = add_block_trace "test-2" trace "node-2" in
     printf "block trace #0 id=%d\n%!" block_trace_0_id ;
     printf "block trace #1 id=%d\n%!" block_trace_1_id ;
     let%bind () = update_block_trace_block_id block_trace_1_id "test-3" in
-    let%bind result = get_block_traces "test-1" in
+    let%bind result = get_block_traces "test-1" "node-1" 1 in
     let%bind () =
       ( match result with
       | (block_id, trace) :: _ ->
@@ -818,7 +784,7 @@ module Testing = struct
           print_endline "not fund" ) ;
       Deferred.Result.return ()
     in
-    let%bind entries = get_block_trace_info_entries () in
+    let%bind entries = get_block_trace_info_entries 1 "node-1" () in
     printf "Trace entries count: %d\n%!" (List.length entries) ;
     List.iteri entries ~f:(fun i trace ->
         printf "Entry #%d:\n%s\n\n%!" i

@@ -109,6 +109,7 @@ struct
           let%bind () = Handler.eof_reached () in
           return (`Trampoline (Clock.after (Time.Span.of_sec 0.2), rotated))
     | `Line line ->
+      Log.Global.debug "processing line %s" line ;
         if%bind process_line ~rotated line then
           process_reader ~inode ~stop_on_eof ~rotated:false ~filename reader
         else return `File_rotated
@@ -120,6 +121,8 @@ struct
   let rec process_reader_loop ~inode ~stop_on_eof ~rotated ~filename reader =
     let%bind result =
       Connection_context.with_connection (fun engine ->
+          Log.Global.debug
+            "starting file processing iteration for %s" filename ;
           let%bind () = Handler.start_file_processing_iteration engine in
           let%bind result =
             process_reader ~inode ~stop_on_eof ~rotated ~filename reader
@@ -167,12 +170,11 @@ struct
           let%bind () = Clock.after (Time.Span.of_sec 2.0) in
           loop false
       | Error exn ->
-          ignore exn ;
-          (*eprintf
+          eprintf
             "File '%s' could not be opened, retrying in 20 seconds. Reason:\n\
              %s\n\
              %!"
-            filename (Exn.to_string exn) ;*)
+            filename (Exn.to_string exn);
           if retry_open then
             let%bind () = Clock.after (Time.Span.of_sec 20.0) in
             loop rotated

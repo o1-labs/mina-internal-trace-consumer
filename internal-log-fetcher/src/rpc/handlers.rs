@@ -1,10 +1,12 @@
 // Copyright (c) Viable Systems
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::ForcedState;
 use reqwest::StatusCode;
 use serde::Serialize;
+use tracing::info;
 
-use crate::{node::NodeIdentity, NodeInfo, SharedAvailableNodes};
+use crate::{node::NodeIdentity, NodeInfo, SharedAvailableNodes, SharedManager};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize)]
 pub struct NodeDescription {
@@ -41,4 +43,31 @@ pub async fn get_nodes_handle(
         warp::reply::json(&results),
         StatusCode::OK,
     ))
+}
+
+pub async fn reset_nodes_handle(
+    shared_manager: SharedManager,
+) -> Result<impl warp::Reply, warp::reject::Rejection> {
+    let mut manager = shared_manager.0.write().await;
+    manager.forced_state = ForcedState::Reset;
+    info!("Reset worker nodes request received, will reset on next cycle.");
+    Ok(warp::reply::with_status(warp::reply(), StatusCode::OK))
+}
+
+pub async fn freeze_nodes_handle(
+    shared_manager: SharedManager,
+) -> Result<impl warp::Reply, warp::reject::Rejection> {
+    let mut manager = shared_manager.0.write().await;
+    manager.forced_state = ForcedState::Freeze;
+    info!("Froze worker nodes request received, won't let them activate unless /unfroze request send.");
+    Ok(warp::reply::with_status(warp::reply(), StatusCode::OK))
+}
+
+pub async fn unfreeze_nodes_handle(
+    shared_manager: SharedManager,
+) -> Result<impl warp::Reply, warp::reject::Rejection> {
+    let mut manager = shared_manager.0.write().await;
+    manager.forced_state = ForcedState::None;
+    info!("Froze worker nodes request received, won't let them activate unless /unfreeze request send.");
+    Ok(warp::reply::with_status(warp::reply(), StatusCode::OK))
 }

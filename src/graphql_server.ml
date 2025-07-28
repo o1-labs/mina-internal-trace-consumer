@@ -35,9 +35,15 @@ module Queries = struct
 
   let get_block_trace =
     io_field "blockTrace" ~doc:"Block trace" ~typ:json_type
-      ~args:Arg.[ arg "block_identifier" ~typ:(non_null string) ]
-      ~resolve:(fun _info () block ->
-        let%bind traces = Persistent_registry.get_block_traces block in
+      ~args:Arg.[ 
+        arg "block_identifier" ~typ:(non_null string);
+        arg "deployment_id" ~doc:"Deployment which was deployed at the time of the block."
+            ~typ:int;
+        arg "node_name" ~doc:"Name of the node which produced the block."
+            ~typ:(non_null string)
+      ]
+      ~resolve:(fun _info () block deployment_id node_name ->
+        let%bind traces = Persistent_registry.get_block_traces node_name block deployment_id in
         show_result_error traces ;
         let traces = Result.ok traces |> Option.value ~default:[] in
         match List.hd traces with
@@ -52,7 +58,7 @@ module Queries = struct
               Result.ok checkpoints |> Option.value ~default:[]
             in
             let trace =
-              Store.Persisted_block_trace.to_block_trace ~checkpoints trace
+              Store.Persisted_block_trace.to_block_trace ~checkpoints ~default_deployment_id:trace.deployment_id trace
             in
             return
             @@ Ok
@@ -62,9 +68,14 @@ module Queries = struct
 
   let get_block_structured_trace =
     io_field "blockStructuredTrace" ~doc:"Block structured trace" ~typ:json_type
-      ~args:Arg.[ arg "block_identifier" ~typ:(non_null string) ]
-      ~resolve:(fun _info () block ->
-        let%bind traces = Persistent_registry.get_block_traces block in
+      ~args:Arg.[ arg "block_identifier" ~typ:(non_null string)
+              ; arg "deployment_id" ~doc:"Deployment which was deployed at the time of the block."
+            ~typ:int;
+            arg "node_name" ~doc:"Name of the node which produced the block."
+            ~typ:(non_null string)
+      ]
+      ~resolve:(fun _info () block deployment_id node_name ->
+        let%bind traces = Persistent_registry.get_block_traces node_name block deployment_id in
         show_result_error traces ;
         let traces = Result.ok traces |> Option.value ~default:[] in
         match List.hd traces with
@@ -79,7 +90,7 @@ module Queries = struct
               Result.ok checkpoints |> Option.value ~default:[]
             in
             let trace =
-              Store.Persisted_block_trace.to_block_trace ~checkpoints trace
+              Store.Persisted_block_trace.to_block_trace ~checkpoints ~default_deployment_id:trace.deployment_id trace
             in
             let trace = Block_tracing.Structured_trace.of_flat_trace trace in
             return
@@ -87,6 +98,42 @@ module Queries = struct
                  (Some
                     ( trace |> Block_tracing.Structured_trace.to_yojson
                     |> Yojson.Safe.to_basic ) ) )
+
+
+  let list_deployments = 
+    io_field "deployments" ~doc:"Deployments" ~typ:(non_null json_type)
+      ~args:Arg.[]
+      ~resolve:(fun _info () ->
+        let%bind deployments =
+          Persistent_registry.get_all_deployments_ids ()
+        in
+        show_result_error deployments ;
+        let deployments = Result.ok deployments |> Option.value ~default:[] in
+        return
+        @@ Ok
+             ( `List (List.map deployments ~f:(fun id -> `Int id))
+             |> Yojson.Safe.to_basic ) )
+
+  let list_nodes = 
+      io_field "nodes" ~doc:"Nodes" ~typ:(non_null json_type)
+        ~args:Arg.[
+          arg "deployment_id" ~doc:"Id of node deployment."
+              ~typ:int
+        ]
+        ~resolve:(fun _info () deployment_id ->
+          let%bind nodes =
+            Persistent_registry.get_nodes_names ?deployment_id ()
+          in
+          show_result_error nodes ;
+          let nodes = Result.ok nodes |> Option.value ~default:[] in
+          return
+          @@ Ok
+              ( `List (
+                  List.map nodes ~f:(fun ((name), (id)) -> 
+                   `Assoc [ ("id",`Int id); ("name",`String name) ] )
+                )
+              |> Yojson.Safe.to_basic ) )
+
 
   let list_block_traces =
     io_field "blockTraces" ~doc:"Block with traces" ~typ:(non_null json_type)
@@ -109,12 +156,16 @@ module Queries = struct
           ; arg "order"
               ~doc:"Results order (by blockchain_length. Ascending by default)."
               ~typ:order
+          ; arg "deployment_id" ~doc:"Deployment which was deployed at the time of the block."
+              ~typ:int
+          ; arg "node_name" ~doc:"Name of the node which produced the block."
+          ~typ:(non_null string)
           ]
       ~resolve:(fun _info () max_length offset height global_slot chain_length
-                    order ->
+                    order deployment_id node_name ->
         let%bind traces =
           Persistent_registry.get_all_block_traces ?max_length ?offset ?height
-            ?global_slot ?chain_length ?order ()
+            ?global_slot ?chain_length ?order ?deployment_id node_name ()
         in
         show_result_error traces ;
         let traces = Result.ok traces |> Option.value ~default:[] in
@@ -127,10 +178,15 @@ module Queries = struct
   let get_block_traces_distribution =
     io_field "blockTracesDistribution"
       ~doc:"Block trace checkpoints distribution" ~typ:(non_null json_type)
-      ~args:Arg.[]
-      ~resolve:(fun _info () ->
+      ~args:Arg.[ 
+          arg "deploymentId" ~doc:"Deployment id which was deployed at the time when distribution was generated."
+          ~typ:int
+          ; arg "node_name" ~doc:"Name of the node which produced the block."
+          ~typ:(non_null string)
+      ]
+      ~resolve:(fun _info () deployment_id node_name ->
         let open Block_tracing.Distributions in
-        let%bind all = Persistent_registry.get_distributions () in
+        let%bind all = Persistent_registry.get_distributions deployment_id node_name in
         show_result_error all ;
         let all =
           Result.ok all |> Option.value_map ~f:Hashtbl.data ~default:[]
@@ -144,9 +200,14 @@ module Queries = struct
     io_field "blockTracesDistributionStructured"
       ~doc:"Block trace checkpoints distribution (structured)"
       ~typ:(non_null json_type)
-      ~args:Arg.[]
-      ~resolve:(fun _info () ->
-        let%bind all = Persistent_registry.get_distributions () in
+      ~args:Arg.[ 
+          arg "deploymentId" ~doc:"Deployment id which was deployed at the time when distribution was generated."
+          ~typ:int
+          ;         arg "node_name" ~doc:"Name of the node which produced the block."
+          ~typ:(non_null string)
+      ]
+      ~resolve:(fun _info () deployment_id node_name ->
+        let%bind all = Persistent_registry.get_distributions deployment_id node_name in
         show_result_error all ;
         let all =
           Result.ok all |> Option.value_map ~f:Hashtbl.data ~default:[]
@@ -163,6 +224,8 @@ module Queries = struct
     [ get_block_trace
     ; get_block_structured_trace
     ; list_block_traces
+    ; list_deployments
+    ; list_nodes
     ; get_block_traces_distribution
     ; get_block_traces_distribution_structured
     ]

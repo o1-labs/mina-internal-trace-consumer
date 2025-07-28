@@ -10,12 +10,6 @@ let show_result_error = function
   | Error error ->
       Log.Global.error "SQL ERROR: %s" (Caqti_error.show error)
 
-let abort_on_error = function
-  | Ok _ ->
-      Deferred.unit
-  | Error error ->
-      Log.Global.error "SQL ERROR: %s" (Caqti_error.show error) ;
-      exit 1
 
 let current_trace_id ?(source = `Unknown) () =
   match%map
@@ -271,6 +265,7 @@ module Main_handler = struct
     match control with
     | "current_block" ->
         current_block := Yojson.Safe.Util.to_string data ;
+        Log.Global.debug "updated current block %s" !current_block;
         Deferred.unit
     | "current_call_id" -> (
         (* TODO: to avoid constant rehashing a flag can be set here about where
@@ -294,6 +289,7 @@ module Main_handler = struct
               (Yojson.Safe.to_string other) ;
             Deferred.unit )
     | "metadata" ->
+        Log.Global.debug "metadata element detected";
         let%bind trace_id = current_trace_id () in
         let%map result =
           Persistent_registry.push_control trace_id ~source:`Main ~is_main:true
@@ -301,6 +297,7 @@ module Main_handler = struct
         in
         show_result_error result ; ()
     | "block_metadata" ->
+        Log.Global.debug "block_metadata element detected";
         let%bind trace_id = current_trace_id () in
         let%bind result =
           Persistent_registry.push_control trace_id ~source:`Main ~is_main:true
@@ -313,6 +310,7 @@ module Main_handler = struct
         in
         show_result_error result ; ()
     | "produced_block_state_hash" ->
+        Log.Global.debug "produced_block_state_hash element detected";
         let state_hash = Yojson.Safe.Util.to_string data in
         let%bind trace_id = current_trace_id () in
         let%map result =
@@ -358,7 +356,6 @@ module Main_handler = struct
         before_prover_entries after_prover_entries before_verifier_entries
         after_verifier_entries
         (after_time -. before_time) ;*)
-    Ivar.fill_if_empty main_trace_synced () ;
     return ()
 
   let start_file_processing_iteration = function
@@ -464,8 +461,9 @@ let compute_database_engine uri =
   | Some "sqlite3" ->
       `Sqlite
   | _ ->
-      eprintf "Unsupported database engine: %s\n%!" (Uri.to_string uri) ;
-      Core.exit 1
+    Core.prerr_endline "Unsupported database engine only postgresql and sqlite3 \
+                        are supported" ;
+    Core.exit 1
 
 let compute_engine_and_uri ~db_path ~db_uri =
   match (db_path, db_uri) with
@@ -493,90 +491,29 @@ let serve =
        flag "--port" ~aliases:[ "port" ]
          (optional_with_default 9080 int)
          ~doc:"PORT Port for GraphQL server to listen on (default 9080)"
-     and main_trace_file_path =
-       flag "--trace-file" ~aliases:[ "trace-file" ] (required string)
-         ~doc:"PATH Path to main internal trace file"
-     and db_path =
-       flag "--db-path" ~aliases:[ "db-path" ] (optional string)
-         ~doc:"PATH Persisted traces database path"
      and db_uri =
        flag "--db-uri" ~aliases:[ "db-uri" ] (optional string)
          ~doc:"URI Persisted traces database URI"
-     and process_rotated_files =
-       flag "--process-rotated-files"
-         ~aliases:[ "process-rotated-files" ]
-         (optional_with_default false bool)
-         ~doc:"BOOL Process log-rotated files"
-     and initialize_schema =
-       flag "--init" ~aliases:[ "init" ]
-         (optional_with_default false bool)
-         ~doc:"BOOL Whether to initialize schema on start"
-     and handle_status_change =
-       flag "--handle-status-change"
-         (optional_with_default false bool)
-         ~doc:
-           "BOOL Whether to handle status change of block trace (and update \
-            distributions)"
-     in
-     let prover_trace_file_path =
-       add_filename_prefix main_trace_file_path ~prefix:"prover-"
-     in
-     let verifier_trace_file_path =
-       add_filename_prefix main_trace_file_path ~prefix:"verifier-"
+     and db_path =
+       flag "--db-path" ~aliases:[ "db-path" ] (optional string)
+         ~doc:"PATH Persisted traces database path"
      in
      fun () ->
-       let db_uri, engine = compute_engine_and_uri ~db_path ~db_uri in
-       let%bind pool = open_database_or_fail db_uri in
-       Connection_context.Db.set engine pool ;
-       let%bind () =
-         if initialize_schema then
-           Store.initialize_database engine >>= abort_on_error
-         else Deferred.unit
-       in
-       let insecure_rest_server = true in
-       Log.Global.info "Starting server on port %d..." port ;
-       let%bind () =
-         Graphql_server.create_graphql_server
-           ~bind_to_address:
-             Tcp.Bind_to_address.(
-               if insecure_rest_server then All_addresses else Localhost)
-           ~schema:Graphql_server.schema ~server_description:"GraphQL server"
-           port
-       in
-       Log.Global.info "Consuming main trace events from file: %s"
-         main_trace_file_path ;
-       Log.Global.info "Consuming prover trace events from file: %s"
-         prover_trace_file_path ;
-       Log.Global.info "Consuming verifier trace events from file: %s"
-         verifier_trace_file_path ;
-       let module Main_trace_processor = Make_main_trace_processor (struct
-         let handle_status_change = handle_status_change
-       end) in
-       let%bind () =
-         if process_rotated_files then
-           Main_trace_processor.process_rotated_files main_trace_file_path
-         else Deferred.unit
-       in
-       let%bind () = Main_trace_processor.process_file main_trace_file_path
-       and () =
-         let%bind () = Main_handler.synced () in
-         let%bind () =
-           if process_rotated_files then
-             Prover_trace_processor.process_rotated_files prover_trace_file_path
-           else Deferred.unit
-         in
-         Prover_trace_processor.process_file prover_trace_file_path
-       and () =
-         let%bind () = Main_handler.synced () in
-         let%bind () =
-           if process_rotated_files then
-             Verifier_trace_processor.process_rotated_files
-               verifier_trace_file_path
-           else Deferred.unit
-         in
-         Verifier_trace_processor.process_file verifier_trace_file_path
-       in
-       Log.Global.info "Done" ; Deferred.return (Ok ()) )
+      let db_uri, engine = compute_engine_and_uri ~db_path ~db_uri in
+      let%bind pool = open_database_or_fail db_uri in
+      Connection_context.Db.set engine pool ;
+      let insecure_rest_server = true in
+      Log.Global.info "Starting server on port %d..." port ;
+      let%bind () =
+        Graphql_server.create_graphql_server
+          ~bind_to_address:
+            Tcp.Bind_to_address.(
+              if insecure_rest_server then All_addresses else Localhost)
+          ~schema:Graphql_server.schema ~server_description:"GraphQL server"
+          port
+      in
+      Log.Global.info "Server started" ;
+      Deferred.never () )
 
 let process =
   Command.async_or_error
@@ -590,10 +527,11 @@ let process =
      and db_uri =
        flag "--db-uri" ~aliases:[ "db-uri" ] (optional string)
          ~doc:"URI Persisted traces database URI"
-     and initialize_schema =
-       flag "--init" ~aliases:[ "init" ]
+     and process_rotated_files =
+       flag "--process-rotated-files"
+         ~aliases:[ "process-rotated-files" ]
          (optional_with_default false bool)
-         ~doc:"BOOL Whether to initialize schema on start"
+         ~doc:"BOOL Process log-rotated files"
      and handle_status_change =
        flag "--handle-status-change"
          (optional_with_default false bool)
@@ -608,38 +546,45 @@ let process =
        add_filename_prefix main_trace_file_path ~prefix:"verifier-"
      in
      fun () ->
-       let db_uri, engine = compute_engine_and_uri ~db_path ~db_uri in
-       let%bind pool = open_database_or_fail db_uri in
-       Connection_context.Db.set engine pool ;
-       let%bind () =
-         if initialize_schema then
-           Store.initialize_database engine >>= abort_on_error
-         else Deferred.unit
-       in
-       Log.Global.info "Consuming main trace events from file: %s"
-         main_trace_file_path ;
-       Log.Global.info "Consuming prover trace events from file: %s"
-         prover_trace_file_path ;
-       Log.Global.info "Consuming verifier trace events from file: %s"
-         verifier_trace_file_path ;
-       let without_rotation = true in
-       let retry_open = false in
-       let module Main_trace_processor = Make_main_trace_processor (struct
-         let handle_status_change = handle_status_change
-       end) in
-       let%bind () =
-         Main_trace_processor.process_file ~without_rotation
-           main_trace_file_path
-       in
-       let%bind () =
-         Prover_trace_processor.process_file ~without_rotation ~retry_open
-           prover_trace_file_path
-       in
-       let%bind () =
-         Verifier_trace_processor.process_file ~without_rotation ~retry_open
-           verifier_trace_file_path
-       in
-       Log.Global.info "Done" ; Deferred.return (Ok ()) )
+      Log.Global.set_level `Debug ;
+      let db_uri, engine = compute_engine_and_uri ~db_path ~db_uri in
+      let%bind pool = open_database_or_fail db_uri in
+      Connection_context.Db.set engine pool ;
+      Log.Global.info "Consuming main trace events from file: %s"
+      main_trace_file_path ;
+    Log.Global.info "Consuming prover trace events from file: %s"
+      prover_trace_file_path ;
+    Log.Global.info "Consuming verifier trace events from file: %s"
+      verifier_trace_file_path ;
+    let module Main_trace_processor = Make_main_trace_processor (struct
+      let handle_status_change = handle_status_change
+    end) in
+    let%bind () =
+      if process_rotated_files then
+        Main_trace_processor.process_rotated_files main_trace_file_path
+      else Deferred.unit
+    in
+    let%bind () = Main_trace_processor.process_file main_trace_file_path
+    and () =
+      let%bind () = Main_handler.synced () in
+      let%bind () =
+        if process_rotated_files then
+          Prover_trace_processor.process_rotated_files prover_trace_file_path
+        else Deferred.unit
+      in
+      Prover_trace_processor.process_file prover_trace_file_path
+    and () =
+      let%bind () = Main_handler.synced () in
+      let%bind () =
+        if process_rotated_files then
+          Verifier_trace_processor.process_rotated_files
+            verifier_trace_file_path
+        else Deferred.unit
+      in
+      Verifier_trace_processor.process_file verifier_trace_file_path
+    in
+    Log.Global.info "Done" ; Deferred.return (Ok ()) )
+
 
 let commands =
   [ ("serve", serve)

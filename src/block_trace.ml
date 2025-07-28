@@ -65,6 +65,7 @@ let status_from_string = function
 
 type t =
   { source : block_source
+  ; deployment_id : int
   ; blockchain_length : int
   ; global_slot : int
   ; checkpoints : Entry.t list
@@ -75,8 +76,9 @@ type t =
   }
 [@@deriving to_yojson]
 
-let empty source =
+let empty source deployment_id =
   { source
+  ; deployment_id
   ; blockchain_length = 0
   ; global_slot = 0
   ; checkpoints = []
@@ -190,10 +192,10 @@ let update_target_trace trace target new_checkpoints =
   | `Other ->
       { trace with other_checkpoints = new_checkpoints }
 
-let push ~status ~source ~order ~target_trace entry trace =
+let push ~status ~source ~order ~target_trace ~default_deployment_id entry trace =
   match (trace, order) with
   | None, _ ->
-      let trace = empty source in
+      let trace = empty source default_deployment_id in
       { trace with checkpoints = [ entry ]; status }
   | Some ({ checkpoints = []; _ } as trace), _ ->
       { trace with checkpoints = [ entry ]; status }

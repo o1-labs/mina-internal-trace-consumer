@@ -6,11 +6,15 @@ pub mod handlers;
 
 use tokio::task::JoinHandle;
 
-use crate::SharedAvailableNodes;
+use crate::{SharedAvailableNodes, SharedManager};
 
-pub fn spawn_rpc_server(rpc_port: u16, available_nodes: SharedAvailableNodes) -> JoinHandle<()> {
+pub fn spawn_rpc_server(
+    rpc_port: u16,
+    shared_manager: SharedManager,
+    available_nodes: SharedAvailableNodes,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let api = filters::filters(available_nodes);
+        let api = filters::filters(shared_manager, available_nodes);
 
         warp::serve(api).run(([0, 0, 0, 0], rpc_port)).await;
     })

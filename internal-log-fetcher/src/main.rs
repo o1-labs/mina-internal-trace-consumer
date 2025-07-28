@@ -15,7 +15,7 @@ use std::{
 };
 use structopt::StructOpt;
 use tokio::{sync::RwLock, time};
-use trace_consumer::TraceConsumer;
+use trace_consumer::TraceConsumerWorker;
 use tracing::{debug, error, info};
 
 use crate::utils::{load_node_name_map, read_secret_key_base64};
@@ -73,6 +73,20 @@ enum NodeDiscoveryMode {
     Discovery(discovery::DiscoveryService),
 }
 
+// Represents the forced state of the node manager
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum ForcedState {
+    // No forced state, the manager is in its normal operation mode
+    #[default]
+    None,
+    // The manager is in a reset state, meaning it will reset worker nodes on the next cycle
+    // This is used to reset the worker nodes, e.g., when the user requests a reset via the REST API
+    Reset,
+    // The manager is in a frozen state, meaning it will not update worker nodes
+    // This is used to freeze the worker nodes, e.g., when the user requests a freeze via the REST API
+    Freeze,
+}
+
 pub struct Manager {
     opts: Opts,
     available_nodes: SharedAvailableNodes,
@@ -82,6 +96,7 @@ pub struct Manager {
     secret_key_base64: String,
     consumer_executable_path: String,
     node_names: HashMap<String, String>,
+    forced_state: ForcedState,
 }
 
 #[derive(Clone)]
@@ -124,6 +139,7 @@ impl Manager {
             secret_key_base64,
             consumer_executable_path,
             node_names,
+            forced_state: Default::default(),
         })
     }
 
@@ -143,7 +159,7 @@ impl Manager {
         }
     }
 
-    async fn update_nodes(&mut self, opts: Opts) -> Result<()> {
+    async fn update_worker_nodes(&mut self, opts: Opts) -> Result<()> {
         let current_uptime_nodes = self.discover(opts.host_overrides).await?;
         let uptime_nodes = HashSet::from_iter(current_uptime_nodes.iter());
         let known_nodes = HashSet::from_iter(self.nodes.keys().cloned());
@@ -158,6 +174,24 @@ impl Manager {
             });
         let nodes_to_reactivate = current_inactive_nodes.intersection(&uptime_nodes);
         let nodes_to_deactivate = current_active_nodes.difference(&uptime_nodes);
+
+        // If the forced state is reset, we will reset the worker nodes
+        if self.forced_state == ForcedState::Reset {
+            self.forced_state = ForcedState::None;
+            info!("Resetting worker nodes due to forced state");
+            for node in self.nodes.keys().cloned().collect::<Vec<_>>() {
+                self.reset_worker_node(&node)?;
+            }
+            return Ok(());
+        }
+
+        if self.forced_state == ForcedState::Freeze {
+            info!("Forcing all node to be frozen (killed and inactive until manually reactivated)");
+            for node in self.nodes.keys().cloned().collect::<Vec<_>>() {
+                self.reset_worker_node(&node)?;
+            }
+            return Ok(());
+        }
 
         info!(
             "State before update: known={} active={} inactive={} discovered={}",
@@ -185,7 +219,7 @@ impl Manager {
             );
             self.nodes.insert(node.clone(), node_info);
             self.next_internal_tracing_port += 1;
-            if let Err(error) = self.spawn_node(node) {
+            if let Err(error) = self.spawn_worker_node(node) {
                 error!("Error when spawning node {:?}: {}", node, error);
             }
         }
@@ -202,24 +236,13 @@ impl Manager {
                     .active
                     .store(true, std::sync::atomic::Ordering::Relaxed);
             }
-            if let Err(error) = self.spawn_node(node) {
+            if let Err(error) = self.spawn_worker_node(node) {
                 error!("Error when spawning node {:?}: {}", node, error);
             }
         }
 
         for node in nodes_to_deactivate {
-            info!("Deactivate node {} ", node.construct_directory_name());
-            if let Some(node_state) = self.nodes.get_mut(node) {
-                info!(
-                    "Deactivate node {} at port {}",
-                    node.construct_directory_name(),
-                    node_state.internal_tracing_port
-                );
-                // Fetcher and consumer loop for this node will detect this change and shut down the loop
-                node_state
-                    .active
-                    .store(false, std::sync::atomic::Ordering::Relaxed);
-            }
+            self.deactivate_worker_node(node)?;
         }
 
         // Update the list of available nodes to contain only the currently active nodes
@@ -240,7 +263,40 @@ impl Manager {
         Ok(())
     }
 
-    fn spawn_node(&mut self, node: &NodeIdentity) -> Result<()> {
+    fn reset_worker_node(&mut self, node: &NodeIdentity) -> Result<()> {
+        debug!(
+            "Deactivating and cleaning tracing files for Node: {:?}",
+            node
+        );
+        self.deactivate_worker_node(node)?;
+        let node_dir_name = node.construct_directory_name();
+        let output_dir_path = self.opts.output_dir_path.join(node_dir_name);
+        debug!("Removing output dir: {}", output_dir_path.display());
+        std::fs::remove_dir_all(output_dir_path.clone()).with_context(|| {
+            format!(
+                "Failed to remove output directory: {}",
+                output_dir_path.display()
+            )
+        })
+    }
+
+    fn deactivate_worker_node(&mut self, node: &NodeIdentity) -> Result<()> {
+        debug!("Deactivating Node: {:?}", node);
+        if let Some(node_state) = self.nodes.get_mut(node) {
+            node_state
+                .active
+                .store(false, std::sync::atomic::Ordering::Relaxed);
+            info!("Node {} deactivated", node.construct_directory_name());
+        } else {
+            error!(
+                "Node {} not found in the manager",
+                node.construct_directory_name()
+            );
+        }
+        Ok(())
+    }
+
+    fn spawn_worker_node(&mut self, node: &NodeIdentity) -> Result<()> {
         debug!("Handling Node: {:?}", node);
         let node_dir_name = node.construct_directory_name();
         let output_dir_path = self.opts.output_dir_path.join(node_dir_name);
@@ -289,15 +345,13 @@ impl Manager {
             let mut mina_server = mina_server::MinaServer::new(config);
             let fetch_loop_handle = mina_server.authorize_and_run_fetch_loop();
             debug!(
-                "Spawning consumer at port {}, with trace file: {}",
-                internal_trace_port,
+                "Spawning consumer with trace file: {}",
                 main_trace_file_path.display()
             );
-            let mut consumer = TraceConsumer::new(
+            let mut consumer = TraceConsumerWorker::new(
                 consumer_executable_path,
                 main_trace_file_path,
                 db_uri,
-                internal_trace_port,
                 node_id.clone(),
             );
             let mut consumer_handle = consumer.run().await.unwrap();
@@ -390,13 +444,15 @@ async fn main() -> Result<()> {
     info!("Spawning REST API server at port {rest_port}");
     rpc::spawn_rpc_server(
         rest_port,
+        shared_manager.clone(),
         shared_manager.0.read().await.available_nodes.clone(),
     );
     tokio::spawn(async move {
+        info!("Server started");
         loop {
             {
                 let mut manager = shared_manager.0.write().await;
-                if let Err(error) = manager.update_nodes(opts.clone()).await {
+                if let Err(error) = manager.update_worker_nodes(opts.clone()).await {
                     error!("Failure when updating list of nodes: {error}");
                 }
             }
