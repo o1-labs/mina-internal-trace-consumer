@@ -1,0 +1,3 @@
+mutation ScheduleZkappCommandsQuery ($input: ZkappCommandsDetails!) {
+    scheduleZkappCommands(input: $input)
+}

@@ -20,10 +20,9 @@ RUN apt-get update \
   && apt-get install -y libpq-dev libsqlite3-dev pkg-config sqlite3 \
   && rm -rf /var/lib/apt/lists/*
 USER opam
-COPY --chown=opam opam.export .
 RUN sudo chown -R opam:opam /home/opam/.opam \
   && opam update \
-  && opam switch import --unlock-base opam.export
+  && opam install dune "async=v0.14.0" "async_unix=v0.14.0" "async_kernel=v0.14.0" caqti caqti-async caqti-driver-postgresql caqti-driver-sqlite3 caqti-dynload cohttp cohttp-async "core=v0.14.1" "core_kernel=v0.14.2" "core_unix=v0.14.0" graphql graphql-async graphql-cohttp graphql_parser ppx_deriving_yojson ppx_jane result sqlite3 uri astring base sexplib0 yojson stdio
 
 FROM builder AS intermediate
 WORKDIR /src
@@ -41,6 +40,11 @@ RUN apt-get update \
 COPY ./internal-log-fetcher/Cargo.toml ./internal-log-fetcher/Cargo.lock ./
 COPY ./internal-log-fetcher/src ./src
 COPY ./internal-log-fetcher/graphql ./graphql
+
+COPY ./internal-log-fetcher/mina-graphql-client/Cargo.toml ./internal-log-fetcher/mina-graphql-client/Cargo.lock ./mina-graphql-client/
+COPY ./internal-log-fetcher/mina-graphql-client/src ./mina-graphql-client/src
+COPY ./internal-log-fetcher/mina-graphql-client/graphql ./mina-graphql-client/graphql
+
 # These RUSTFLAGS are required to properly build an alpine binary
 # linked to OpenSSL that doesn't segfault
 RUN env RUSTFLAGS="-C target-feature=-crt-static" cargo build --release

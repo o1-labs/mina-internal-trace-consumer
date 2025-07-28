@@ -34,7 +34,7 @@ pub struct DiscoveryService {
 fn offset_by_time(prefix_str: String, t: DateTime<Utc>) -> String {
     let t_str = t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
     let d_str = t.format("%Y-%m-%d");
-    format!("{}/{}/{}", prefix_str, d_str, t_str)
+    format!("{prefix_str}/{d_str}/{t_str}")
 }
 
 fn new_from_aws() -> Result<DiscoveryService> {
@@ -133,7 +133,7 @@ async fn discover_aws(
     let before = Utc::now() - chrono::Duration::minutes(20);
     let prefix_str = format!("{}/submissions", aws.prefix);
     let prefix_str2 = prefix_str.clone();
-    let offset: Path = offset_by_time(prefix_str, before).try_into()?;
+    let offset: Path = offset_by_time(prefix_str, before).into();
     let prefix: Path = prefix_str2.into();
     info!("Obtaining list of objects in bucket...");
     let it = aws.s3.list_with_offset(Some(&prefix), &offset).await?;
