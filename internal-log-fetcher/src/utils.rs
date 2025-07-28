@@ -55,7 +55,7 @@ pub fn convert_timestamp_to_float(timestamp: &str) -> Result<f64, TsConversionEr
 
 pub fn read_secret_key_base64(secret_key_path: &PathBuf) -> Result<String> {
     std::fs::read_to_string(secret_key_path)
-        .with_context(|| format!("Failed to read secret key from {:?}", secret_key_path))
+        .with_context(|| format!("Failed to read secret key from {secret_key_path:?}"))
 }
 
 pub fn load_node_name_map(node_name_map_path: &PathBuf) -> Result<HashMap<String, String>> {

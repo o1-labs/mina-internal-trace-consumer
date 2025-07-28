@@ -1,13 +1,9 @@
 // Copyright (c) Viable Systems
 // SPDX-License-Identifier: Apache-2.0
 use crate::{log_entry::LogEntry, utils};
-use anyhow::{Result};
+use anyhow::Result;
 use mina_graphql_client::{InternalLogsQueryInternalLogs, MinaClientConfig, MinaGraphQLClient};
-use std::{
-    fs::File,
-    io::Write,
-    path::PathBuf,
-};
+use std::{fs::File, io::Write, path::PathBuf};
 
 pub(crate) struct MinaServerConfig {
     pub(crate) client_config: MinaClientConfig,
@@ -59,9 +55,7 @@ impl MinaServer {
         Ok(())
     }
 
-    pub async fn authorize_and_run_fetch_loop(
-        &mut self
-    ) -> Result<()> {
+    pub async fn authorize_and_run_fetch_loop(&mut self) -> Result<()> {
         self.mina_graphql_client
             .authorize_and_run_fetch_loop()
             .await

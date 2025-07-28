@@ -284,7 +284,7 @@ impl Manager {
         };
         let consumer_executable_path = self.consumer_executable_path.clone().into();
         let active = Arc::clone(&node_state.active);
-        
+
         tokio::spawn(async move {
             let mut mina_server = mina_server::MinaServer::new(config);
             let fetch_loop_handle = mina_server.authorize_and_run_fetch_loop();
@@ -427,7 +427,7 @@ mod tests {
     use discovery::fetch_online;
     use httpmock::prelude::*;
     use std::collections::HashSet;
-    
+
     #[tokio::test]
     async fn test_fetch_online() -> Result<(), Box<dyn std::error::Error>> {
         // Start a lightweight mock server
