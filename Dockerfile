@@ -23,7 +23,8 @@ USER opam
 COPY --chown=opam opam.export .
 RUN sudo chown -R opam:opam /home/opam/.opam \
   && opam update \
-  && opam switch import --unlock-base opam.export
+  && opam switch import --unlock-base --dry-run opam.export || true \
+  && opam install --unlock-base dune async caqti caqti-async caqti-driver-postgresql caqti-driver-sqlite3 caqti-dynload cohttp cohttp-async core graphql-async graphql-cohttp result ppx_deriving_yojson core_unix time_unix
 
 FROM builder AS intermediate
 WORKDIR /src

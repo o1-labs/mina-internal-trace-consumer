@@ -334,13 +334,13 @@ module Q = struct
     in
     let rep =
       Caqti_type.(
-        tup3 (tup3 float float float) (tup4 string int int string) string)
+        t3 (t3 float float float) (t4 string int int string) string)
     in
     custom ~encode ~decode rep
 
-  let block_trace_with_id = Caqti_type.tup2 block_trace_id block_trace
+  let block_trace_with_id = Caqti_type.t2 block_trace_id block_trace
 
-  let block_trace_with_block_id = Caqti_type.tup2 block_id block_trace
+  let block_trace_with_block_id = Caqti_type.t2 block_id block_trace
 
   let block_trace_info =
     let open Block_tracing.Registry in
@@ -366,7 +366,7 @@ module Q = struct
     in
     let rep =
       Caqti_type.(
-        tup4 string (tup4 string int int string) (tup2 float float) string)
+        t4 string (t4 string int int string) (t2 float float) string)
     in
     custom ~encode ~decode rep
 
@@ -406,11 +406,11 @@ module Q = struct
       in
       Ok { source; call_id; checkpoint }
     in
-    let rep = Caqti_type.(tup3 string int (tup4 bool string float string)) in
+    let rep = Caqti_type.(t3 string int (t4 bool string float string)) in
     custom ~encode ~decode rep
 
   let block_trace_checkpoint_with_trace_id =
-    Caqti_type.(tup3 block_trace_id bool block_trace_checkpoint)
+    Caqti_type.(t3 block_trace_id bool block_trace_checkpoint)
 
   let initialize_schema (engine : [ `Sqlite | `Postgres ]) =
     let primary_key_int, json_type =
@@ -501,7 +501,7 @@ module Q = struct
          node_name
 
   let update_block_trace =
-    (tup2 block_trace block_trace_id ->. unit)
+    (t2 block_trace block_trace_id ->. unit)
       {eos|
         UPDATE block_trace SET
           trace_started_at = ?,
@@ -516,7 +516,7 @@ module Q = struct
       |eos}
 
   let update_block_trace_block_id =
-    (tup2 block_id block_trace_id ->. unit)
+    (t2 block_id block_trace_id ->. unit)
       {eos|
         UPDATE block_trace SET block_id = ? WHERE block_trace_id = ?
       |eos}
@@ -565,7 +565,7 @@ module Q = struct
       node_name
 
   let select_block_trace_info_entries_asc =
-    (tup2 int int ->* block_trace_info)
+    (t2 int int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
       ORDER BY bt.block_trace_id ASC
@@ -574,7 +574,7 @@ module Q = struct
     |eos}
 
   let select_block_trace_info_entries_desc =
-    (tup2 int int ->* block_trace_info)
+    (t2 int int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
       ORDER BY bt.block_trace_id DESC
@@ -590,7 +590,7 @@ module Q = struct
         select_block_trace_info_entries_desc
 
   let select_block_trace_info_entries_by_global_slot_asc =
-    (tup4 int int int int ->* block_trace_info)
+    (t4 int int int int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
         AND bt.global_slot > $3 AND bt.global_slot <= $4
@@ -600,7 +600,7 @@ module Q = struct
     |eos}
 
   let select_block_trace_info_entries_by_global_slot_desc =
-    (tup4 int int int int ->* block_trace_info)
+    (t4 int int int int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
         AND bt.global_slot > $3 AND bt.global_slot <= $4
@@ -617,7 +617,7 @@ module Q = struct
         select_block_trace_info_entries_by_global_slot_desc
 
   let select_block_trace_info_entries_by_height_asc =
-    (tup4 int int int int ->* block_trace_info)
+    (t4 int int int int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
         AND bt.blockchain_length > $3 AND bt.blockchain_length <= $4
@@ -627,7 +627,7 @@ module Q = struct
     |eos}
 
   let select_block_trace_info_entries_by_height_desc =
-    (tup4 int int int int ->* block_trace_info)
+    (t4 int int int int ->* block_trace_info)
     @@ base_block_traces_query
     ^ {eos|
         AND bt.blockchain_length > $3 AND bt.blockchain_length <= $4
@@ -659,7 +659,7 @@ module Q = struct
       |eos}
 
   let select_block_trace_checkpoints =
-    (tup2 int bool ->* block_trace_checkpoint)
+    (t2 int bool ->* block_trace_checkpoint)
       {eos|
         SELECT
           source, call_id, is_control, name, started_at,
@@ -670,7 +670,7 @@ module Q = struct
       |eos}
 
   let set_value =
-    (tup2 string string ->. unit)
+    (t2 string string ->. unit)
     @@ sprintf
          {eos|
         INSERT INTO data (key, node_name, value) VALUES (?, '%s', ?)

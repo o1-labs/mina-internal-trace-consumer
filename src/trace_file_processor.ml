@@ -71,7 +71,7 @@ struct
 
   let file_changed inode filename =
     try
-      let stat = Core.Unix.stat filename in
+      let stat = Core_unix.stat filename in
       inode <> stat.st_ino
     with Unix.Unix_error _ ->
       Log.Global.error "File '%s' removed" filename ;
@@ -100,7 +100,7 @@ struct
 
   let rec process_reader ~inode ~stop_on_eof ~rotated ~filename reader =
     let%bind next_line =
-      really_read_line ~inode ~filename ~wait_time:(Time.Span.of_sec 0.2) reader
+      really_read_line ~inode ~filename ~wait_time:(sec 0.2) reader
     in
     match next_line with
     | `Eof_reached ->
