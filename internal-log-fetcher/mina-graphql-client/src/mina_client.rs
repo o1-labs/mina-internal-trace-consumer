@@ -134,7 +134,9 @@ impl MinaGraphQLClient {
             .send()
             .await?;
 
-        debug!("GraphQL response: {:#?}", response);
+        tracing::debug!("GraphQL response: {:#?}", response);
+
+        Ok(response.json().await?)
     }
 
     pub async fn reset_zkapp_soft_limit_query(&self) -> Result<()> {
@@ -216,6 +218,13 @@ impl MinaGraphQLClient {
         ),
     )]
     pub async fn authorize_and_run_fetch_loop(&mut self) -> Result<()> {
+        self.authorize_and_run_fetch_loop_with_callback(|_logs| Ok(())).await
+    }
+
+    pub async fn authorize_and_run_fetch_loop_with_callback<F>(&mut self, mut log_processor: F) -> Result<()>
+    where
+        F: FnMut(Vec<InternalLogsQueryInternalLogs>) -> Result<()>,
+    {
         match self.authorize().await {
             Ok(()) => info!("Authorization Successful"),
             Err(e) => {
@@ -228,7 +237,12 @@ impl MinaGraphQLClient {
 
         loop {
             match self.fetch_more_logs().await {
-                Ok((true, _)) => {
+                Ok((true, logs)) => {
+                    // Process the fetched logs using the provided callback
+                    if let Err(e) = log_processor(logs) {
+                        error!("Error processing logs: {}", e);
+                    }
+                    
                     // TODO: make this configurable? we don't want to do it by default
                     // because we may have many replicas of the discovery+fetcher service running
                     if false {
@@ -236,7 +250,13 @@ impl MinaGraphQLClient {
                     }
                     remaining_retries = 5
                 }
-                Ok((false, _)) => remaining_retries = 5,
+                Ok((false, logs)) => {
+                    // Process logs even when no new logs were found (empty vector)
+                    if let Err(e) = log_processor(logs) {
+                        error!("Error processing logs: {}", e);
+                    }
+                    remaining_retries = 5
+                }
                 Err(error) => {
                     error!("Error when fetching logs {error}");
                     remaining_retries -= 1;

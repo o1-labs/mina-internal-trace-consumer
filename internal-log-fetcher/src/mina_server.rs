@@ -1,18 +1,13 @@
 // Copyright (c) Viable Systems
 // SPDX-License-Identifier: Apache-2.0
-
 use crate::{log_entry::LogEntry, utils};
-use anyhow::{anyhow, Result};
-use base64::{engine::general_purpose, Engine};
+use anyhow::{Result};
 use mina_graphql_client::{InternalLogsQueryInternalLogs, MinaClientConfig, MinaGraphQLClient};
-use std::env;
 use std::{
     fs::File,
     io::Write,
     path::PathBuf,
-    sync::{atomic::AtomicBool, Arc},
 };
-use tracing::{error, info, instrument};
 
 pub(crate) struct MinaServerConfig {
     pub(crate) client_config: MinaClientConfig,

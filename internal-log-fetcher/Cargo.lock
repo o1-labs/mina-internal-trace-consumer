@@ -1381,6 +1381,7 @@ dependencies = [
  "futures-util",
  "graphql_client",
  "httpmock",
+ "mina-graphql-client",
  "object_store",
  "rand 0.7.3",
  "reqwest",
@@ -1495,6 +1496,29 @@ checksum = "4192263c238a5f0d0c6bfd21f336a313a4ce1c450542449ca191bb657b4642ef"
 dependencies = [
  "mime",
  "unicase",
+]
+
+[[package]]
+name = "mina-graphql-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.4",
+ "chrono",
+ "ed25519-dalek",
+ "futures-util",
+ "graphql_client",
+ "object_store",
+ "rand 0.7.3",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "structopt",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "warp",
 ]
 
 [[package]]
