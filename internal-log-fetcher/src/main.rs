@@ -1,6 +1,9 @@
 // Copyright (c) Viable Systems
 // SPDX-License-Identifier: Apache-2.0
 
+//Temporary workaround to avoid dead code warnings
+#![allow(dead_code)]
+
 use anyhow::{Context, Result};
 use mina_graphql_client::MinaClientConfig;
 use node::NodeIdentity;
