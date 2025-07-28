@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-ocaml:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     
     steps:
     - uses: actions/checkout@v4
@@ -16,7 +16,9 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libpq-dev libsqlite3-dev pkg-config sqlite3
+        sudo apt-get install -y libpq-dev libsqlite3-dev pkg-config sqlite3 bubblewrap g++-multilib gcc-multilib mercurial musl-tools rsync
+        # Try to install darcs, but don't fail if it's not available
+        sudo apt-get install -y darcs || echo "darcs not available in apt, will skip"
     
     - name: Set up OCaml
       uses: ocaml/setup-ocaml@v2
