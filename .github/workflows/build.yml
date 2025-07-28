@@ -13,17 +13,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install darcs from universe repository
+    - name: Install darcs via snap
       run: |
-        sudo add-apt-repository universe
-        sudo apt update
-        sudo apt install darcs
-
-    - name: Set up OCaml
-      uses: ocaml/setup-ocaml@v2
-      with:
-        ocaml-compiler: 4.14.0
-        
+        sudo snap install darcs --classic
+        - name: Set up OCaml
+          uses: ocaml/setup-ocaml@v2
+          with:
+            ocaml-compiler: 4.14.0
+            
     - name: Install dependencies
       run: |
         opam switch import opam.export
