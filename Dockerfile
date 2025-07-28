@@ -22,7 +22,7 @@ RUN apt-get update \
 USER opam
 RUN sudo chown -R opam:opam /home/opam/.opam \
   && opam update \
-  && opam install dune async async_unix async_kernel caqti caqti-async caqti-driver-postgresql caqti-driver-sqlite3 caqti-dynload cohttp cohttp-async core core_kernel core_unix graphql graphql-async graphql-cohttp graphql_parser ppx_deriving_yojson ppx_jane result sqlite3 uri astring base sexplib0 yojson stdio
+  && opam install dune "async=v0.14.0" "async_unix=v0.14.0" "async_kernel=v0.14.0" caqti caqti-async caqti-driver-postgresql caqti-driver-sqlite3 caqti-dynload cohttp cohttp-async "core=v0.14.1" "core_kernel=v0.14.2" "core_unix=v0.14.0" graphql graphql-async graphql-cohttp graphql_parser ppx_deriving_yojson ppx_jane result sqlite3 uri astring base sexplib0 yojson stdio
 
 FROM builder AS intermediate
 WORKDIR /src
