@@ -13,26 +13,27 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install darcs via snap
+    - name: Install system dependencies
       run: |
-        sudo snap install darcs --classic
-        - name: Set up OCaml
-          uses: ocaml/setup-ocaml@v2
-          with:
-            ocaml-compiler: 4.14.0
+        sudo apt-get update
+        sudo apt-get install -y libpq-dev libsqlite3-dev pkg-config sqlite3
+    
+    - name: Set up OCaml
+      uses: ocaml/setup-ocaml@v2
+      with:
+          ocaml-compiler: 4.14.0
+          dune-cache: true
             
-    - name: Install dependencies
+    - name: Install OCaml dependencies
       run: |
-        opam switch import opam.export
+        opam install dune "async=v0.14.0" "async_unix=v0.14.0" "async_kernel=v0.14.0" caqti caqti-async caqti-driver-postgresql caqti-driver-sqlite3 caqti-dynload cohttp cohttp-async "core=v0.14.1" "core_kernel=v0.14.2" "core_unix=v0.14.0" graphql graphql-async graphql-cohttp graphql_parser ppx_deriving_yojson ppx_jane result sqlite3 uri astring base sexplib0 yojson stdio
         
     - name: Build OCaml project
       run: |
-        eval $(opam env)
         dune build src/internal_trace_consumer.exe
         
     - name: Test OCaml project
       run: |
-        eval $(opam env)
         dune runtest || echo "No tests found"
 
   build-rust:
