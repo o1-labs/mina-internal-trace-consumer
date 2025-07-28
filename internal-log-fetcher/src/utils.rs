@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn test_load_node_name_map() {
-        let name_map = load_node_name_map(&PathBuf::from("test-data/node_names.json"))
+        let _name_map = load_node_name_map(&PathBuf::from("test-data/node_names.json"))
             .expect("Failed to read names map json");
     }
 }

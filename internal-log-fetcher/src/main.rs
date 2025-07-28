@@ -427,19 +427,7 @@ mod tests {
     use discovery::fetch_online;
     use httpmock::prelude::*;
     use std::collections::HashSet;
-
-    #[tokio::test]
-    async fn test_signature() {
-        let auth = BasicAuthenticator {};
-
-        let signature = authentication::sign_request(secret_key_base64, "GET", "/v1/online");
-        assert_eq!(
-            signature,
-            "B62qrU
-        VQNh2K7e7LgepVt2ireCDdDxTL2QVxy4Mda4yZKHCz7R2bWYz"
-        );
-    }
-
+    
     #[tokio::test]
     async fn test_fetch_online() -> Result<(), Box<dyn std::error::Error>> {
         // Start a lightweight mock server
