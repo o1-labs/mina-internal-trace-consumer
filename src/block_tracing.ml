@@ -38,6 +38,7 @@ module Registry = struct
 
   type trace_info =
     { source : Trace.block_source
+    ; deployment_id : int
     ; blockchain_length : int
     ; global_slot : int
     ; state_hash : string
