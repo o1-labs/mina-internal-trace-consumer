@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose, Engine};
 use graphql_client::GraphQLQuery;
 use std::convert::From;
-use tracing::{info};
+use tracing::info;
 
 #[derive(Default, Clone)]
 pub struct AuthorizationInfo {
@@ -215,5 +215,4 @@ impl MinaGraphQLClient {
         let _response_data = response.data.unwrap();
         Ok(())
     }
-
 }
