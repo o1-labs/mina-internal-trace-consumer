@@ -56,9 +56,41 @@ impl MinaServer {
     }
 
     pub async fn authorize_and_run_fetch_loop(&mut self) -> Result<()> {
-        self.mina_graphql_client
-            .authorize_and_run_fetch_loop()
-            .await
+        // Authorize first
+        self.mina_graphql_client.authorize().await?;
+        
+        let mut remaining_retries = 5;
+        
+        loop {
+            match self.mina_graphql_client.fetch_more_logs().await {
+                Ok((true, logs)) => {
+                    // Process the fetched logs using save_log_entries
+                    self.save_log_entries(logs)?;
+                    remaining_retries = 5;
+                }
+                Ok((false, logs)) => {
+                    // Process logs even when no new logs were found (empty vector)
+                    self.save_log_entries(logs)?;
+                    remaining_retries = 5;
+                }
+                Err(error) => {
+                    eprintln!("Error when fetching logs {error}");
+                    remaining_retries -= 1;
+
+                    if remaining_retries <= 0 {
+                        eprintln!("Finishing fetcher loop");
+                        return Err(error);
+                    }
+                }
+            }
+            
+            let fetch_interval_ms = std::env::var("FETCH_INTERVAL_MS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(10000);
+
+            tokio::time::sleep(std::time::Duration::from_millis(fetch_interval_ms)).await;
+        }
     }
 
     pub(crate) fn file_for_process(

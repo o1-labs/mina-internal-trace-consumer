@@ -7,8 +7,7 @@ use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose, Engine};
 use graphql_client::GraphQLQuery;
 use std::convert::From;
-use std::env;
-use tracing::{error, info, instrument};
+use tracing::{info};
 
 #[derive(Default, Clone)]
 pub struct AuthorizationInfo {
@@ -75,13 +74,19 @@ impl MinaGraphQLClient {
     }
 
     pub async fn fetch_more_logs(&mut self) -> Result<(bool, Vec<InternalLogsQueryInternalLogs>)> {
+        info!("Fetching more logs from {}...", self.config.address);
         let prev_last_log_id = self.last_log_id;
         let (last_log_id, logs) = self.perform_fetch_internal_logs_query().await?;
         self.last_log_id = last_log_id;
         if let Some(auth_info) = &mut self.authorization_info {
             auth_info.signer_sequence_number += 1;
         }
-
+        info!(
+            "Fetched {} logs, last_log_id updated from {} to {}",
+            logs.len(),
+            prev_last_log_id,
+            self.last_log_id
+        );
         Ok((prev_last_log_id < self.last_log_id, logs))
     }
 
@@ -211,68 +216,4 @@ impl MinaGraphQLClient {
         Ok(())
     }
 
-    #[instrument(
-        skip(self),
-        fields(
-            node = %self.config.graphql_uri()
-        ),
-    )]
-    pub async fn authorize_and_run_fetch_loop(&mut self) -> Result<()> {
-        self.authorize_and_run_fetch_loop_with_callback(|_logs| Ok(())).await
-    }
-
-    pub async fn authorize_and_run_fetch_loop_with_callback<F>(&mut self, mut log_processor: F) -> Result<()>
-    where
-        F: FnMut(Vec<InternalLogsQueryInternalLogs>) -> Result<()>,
-    {
-        match self.authorize().await {
-            Ok(()) => info!("Authorization Successful"),
-            Err(e) => {
-                error!("Authorization failed for node: {}", e);
-                Err(e)?
-            }
-        }
-
-        let mut remaining_retries = 5;
-
-        loop {
-            match self.fetch_more_logs().await {
-                Ok((true, logs)) => {
-                    // Process the fetched logs using the provided callback
-                    if let Err(e) = log_processor(logs) {
-                        error!("Error processing logs: {}", e);
-                    }
-                    
-                    // TODO: make this configurable? we don't want to do it by default
-                    // because we may have many replicas of the discovery+fetcher service running
-                    if false {
-                        self.flush_logs().await?;
-                    }
-                    remaining_retries = 5
-                }
-                Ok((false, logs)) => {
-                    // Process logs even when no new logs were found (empty vector)
-                    if let Err(e) = log_processor(logs) {
-                        error!("Error processing logs: {}", e);
-                    }
-                    remaining_retries = 5
-                }
-                Err(error) => {
-                    error!("Error when fetching logs {error}");
-                    remaining_retries -= 1;
-
-                    if remaining_retries <= 0 {
-                        error!("Finishing fetcher loop");
-                        return Err(error);
-                    }
-                }
-            }
-            let fetch_interval_ms = env::var("FETCH_INTERVAL_MS")
-                .ok()
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(10000);
-
-            tokio::time::sleep(std::time::Duration::from_millis(fetch_interval_ms)).await;
-        }
-    }
 }
