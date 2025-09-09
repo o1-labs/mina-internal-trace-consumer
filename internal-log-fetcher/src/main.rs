@@ -272,12 +272,16 @@ impl Manager {
         let node_dir_name = node.construct_directory_name();
         let output_dir_path = self.opts.output_dir_path.join(node_dir_name);
         debug!("Removing output dir: {}", output_dir_path.display());
-        std::fs::remove_dir_all(output_dir_path.clone()).with_context(|| {
-            format!(
-                "Failed to remove output directory: {}",
-                output_dir_path.display()
-            )
-        })
+        if std::fs::exists(output_dir_path.clone()).is_ok() {
+            std::fs::remove_dir_all(output_dir_path.clone()).with_context(|| {
+                format!(
+                    "Failed to remove output directory: {}",
+                    output_dir_path.display()
+                )
+            })
+        } else {
+            Ok(())
+        }
     }
 
     fn deactivate_worker_node(&mut self, node: &NodeIdentity) -> Result<()> {

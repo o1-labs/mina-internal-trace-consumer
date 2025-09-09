@@ -59,7 +59,7 @@ pub async fn freeze_nodes_handle(
 ) -> Result<impl warp::Reply, warp::reject::Rejection> {
     let mut manager = shared_manager.0.write().await;
     manager.forced_state = ForcedState::Freeze;
-    info!("Froze worker nodes request received, won't let them activate unless /unfroze request send.");
+    info!("Freeze worker nodes request received, won't let them activate unless /unfreeze request send.");
     Ok(warp::reply::with_status(warp::reply(), StatusCode::OK))
 }
 
@@ -68,6 +68,6 @@ pub async fn unfreeze_nodes_handle(
 ) -> Result<impl warp::Reply, warp::reject::Rejection> {
     let mut manager = shared_manager.0.write().await;
     manager.forced_state = ForcedState::None;
-    info!("Froze worker nodes request received, won't let them activate unless /unfreeze request send.");
+    info!("Unfreeze worker nodes request received, will allow them to activate.");
     Ok(warp::reply::with_status(warp::reply(), StatusCode::OK))
 }
