@@ -19,12 +19,7 @@
 
       in {
         devShells.default = pkgs.mkShell {
-          buildInputs = [
-            rust
-            pkgs.pkg-config
-            pkgs.openssl
-            pkgs.openssl_3
-          ];
+          buildInputs = [ rust pkgs.pkg-config pkgs.openssl pkgs.openssl_3 ];
 
           shellHook = ''
             echo "✅ Rust: $(rustc --version)"
