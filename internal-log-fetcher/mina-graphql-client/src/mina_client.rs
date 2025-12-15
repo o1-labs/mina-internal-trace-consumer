@@ -1,6 +1,10 @@
-use crate::authentication::{Authenticator, BasicAuthenticator, SequentialAuthenticator};
+use crate::authentication::{
+    Authenticator, BasicAuthenticator, NoAuthenticator, SequentialAuthenticator,
+};
 use crate::graphql;
+use crate::graphql::schedule_payments_query::PaymentsDetails;
 use crate::graphql::schedule_zkapp_commands_query::ZkappCommandsDetails;
+use crate::graphql::update_gating_query::GatingUpdate;
 use crate::InternalLogsQueryInternalLogs;
 
 use anyhow::{anyhow, Result};
@@ -105,7 +109,7 @@ impl MinaGraphQLClient {
             serde_json::to_vec(query).map_err(|e| anyhow!("Invalid JSON query: {}", e))?;
         let signature_header = SequentialAuthenticator::signature_header(self, &body_bytes)?;
         let response = client
-            .post(&self.config.graphql_uri())
+            .post(self.config.graphql_uri())
             .json(&query)
             .header(reqwest::header::AUTHORIZATION, signature_header)
             .header(
@@ -128,20 +132,27 @@ impl MinaGraphQLClient {
         &self,
         client: &reqwest::Client,
         variables: Q::Variables,
-    ) -> Result<graphql_client::Response<Q::ResponseData>> {
+    ) -> Result<graphql_client::Response<Q::ResponseData>>
+    where
+        Q::Variables: std::fmt::Debug,
+    {
         let body = Q::build_query(variables);
         let body_bytes = serde_json::to_vec(&body)?;
         let signature_header = A::signature_header(self, &body_bytes)?;
         let response = client
-            .post(&self.config.graphql_uri())
+            .post(self.config.graphql_uri())
             .json(&body)
-            .header(reqwest::header::AUTHORIZATION, signature_header)
-            .send()
-            .await?;
+            .header(reqwest::header::AUTHORIZATION, signature_header);
+        tracing::debug!("GraphQL request body: {:#?}", &body);
+        let response = response.send().await?;
 
         tracing::debug!("GraphQL response: {:#?}", response);
 
-        Ok(response.json().await?)
+        let response_text = response.text().await?;
+        tracing::debug!("GraphQL response body: {}", response_text);
+
+        let parsed_response = serde_json::from_str(&response_text)?;
+        Ok(parsed_response)
     }
 
     pub async fn reset_zkapp_soft_limit_query(&self) -> Result<()> {
@@ -214,5 +225,127 @@ impl MinaGraphQLClient {
             .await?;
         let _response_data = response.data.unwrap();
         Ok(())
+    }
+
+    pub async fn schedule_payments(&self, input: PaymentsDetails) -> Result<String> {
+        let client = reqwest::Client::new();
+        let variables = graphql::schedule_payments_query::Variables { input };
+        let response = self
+            .post_graphql::<graphql::SchedulePaymentsQuery, BasicAuthenticator>(&client, variables)
+            .await?;
+        let handle = response
+            .data
+            .ok_or_else(|| anyhow!("Response data is missing"))?
+            .schedule_payments;
+        Ok(handle)
+    }
+
+    pub async fn stop_payments(&self, handle: String) -> Result<String> {
+        let client = reqwest::Client::new();
+        let variables = graphql::stop_payments_query::Variables { handle };
+        let response = self
+            .post_graphql::<graphql::StopPaymentsQuery, BasicAuthenticator>(&client, variables)
+            .await?;
+        let result = response
+            .data
+            .ok_or_else(|| anyhow!("Response data is missing"))?
+            .stop_payments;
+        Ok(result)
+    }
+
+    pub async fn update_gating(&self, input: GatingUpdate) -> Result<String> {
+        let client = reqwest::Client::new();
+        let variables = graphql::update_gating_query::Variables { input };
+        let response = self
+            .post_graphql::<graphql::UpdateGatingQuery, SequentialAuthenticator>(&client, variables)
+            .await?;
+
+        if let Some(errors) = response.errors {
+            tracing::error!("GraphQL errors: {:?}", errors);
+            return Err(anyhow!("GraphQL errors: {:?}", errors));
+        }
+
+        let result = response
+            .data
+            .ok_or_else(|| anyhow!("Response data is missing"))?
+            .update_gating;
+        Ok(result)
+    }
+
+    pub async fn slots_won(&self) -> Result<Vec<i64>> {
+        let client = reqwest::Client::new();
+        let variables = graphql::slots_won_query::Variables {};
+        let response = self
+            .post_graphql::<graphql::SlotsWonQuery, SequentialAuthenticator>(&client, variables)
+            .await?;
+        let slots = response
+            .data
+            .ok_or_else(|| anyhow!("Response data is missing"))?
+            .slots_won;
+        Ok(slots)
+    }
+
+    pub async fn stop_daemon(
+        &self,
+        delay_seconds: Option<i64>,
+        clean_config: Option<bool>,
+    ) -> Result<String> {
+        let client = reqwest::Client::new();
+        let variables = graphql::stop_daemon_query::Variables {
+            delay_seconds,
+            clean_config,
+        };
+        let response = self
+            .post_graphql::<graphql::StopDaemonQuery, SequentialAuthenticator>(&client, variables)
+            .await?;
+        let result = response
+            .data
+            .ok_or_else(|| anyhow!("Response data is missing"))?
+            .stop_daemon;
+        Ok(result)
+    }
+
+    pub async fn connection_gating_config(
+        &self,
+    ) -> Result<
+        graphql::connection_gating_config_query::ConnectionGatingConfigQueryConnectionGatingConfig,
+    > {
+        let client = reqwest::Client::new();
+        let variables = graphql::connection_gating_config_query::Variables {};
+        let response = self
+            .post_graphql::<graphql::ConnectionGatingConfigQuery, NoAuthenticator>(
+                &client, variables,
+            )
+            .await?;
+
+        if let Some(errors) = response.errors {
+            tracing::error!("GraphQL errors: {:?}", errors);
+            return Err(anyhow!("GraphQL errors: {:?}", errors));
+        }
+
+        let config = response
+            .data
+            .ok_or_else(|| anyhow!("Response data is missing"))?
+            .connection_gating_config;
+        Ok(config)
+    }
+
+    pub async fn get_peers(&self) -> Result<Vec<graphql::get_peers_query::GetPeersQueryGetPeers>> {
+        let client = reqwest::Client::new();
+        let variables = graphql::get_peers_query::Variables {};
+        let response = self
+            .post_graphql::<graphql::GetPeersQuery, NoAuthenticator>(&client, variables)
+            .await?;
+
+        if let Some(errors) = response.errors {
+            tracing::error!("GraphQL errors: {:?}", errors);
+            return Err(anyhow!("GraphQL errors: {:?}", errors));
+        }
+
+        let peers = response
+            .data
+            .ok_or_else(|| anyhow!("Response data is missing"))?
+            .get_peers;
+        Ok(peers)
     }
 }

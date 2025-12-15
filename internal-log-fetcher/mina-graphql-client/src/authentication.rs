@@ -14,6 +14,8 @@ pub(crate) struct BasicAuthenticator {}
 
 pub(crate) struct SequentialAuthenticator {}
 
+pub(crate) struct NoAuthenticator {}
+
 pub(crate) fn sign_data(keypair: &ed25519_dalek::Keypair, data: &[u8]) -> Vec<u8> {
     let signature = keypair.sign(data);
     let signature_bytes = signature.to_bytes();
@@ -50,6 +52,12 @@ impl Authenticator for SequentialAuthenticator {
         let pk_base64 = &server.pk_base64;
 
         Ok(format!("Signature {pk_base64} {signature_base64} ; Sequencing {server_uuid} {signer_sequence_number}"))
+    }
+}
+
+impl Authenticator for NoAuthenticator {
+    fn signature_header(_server: &MinaGraphQLClient, _body_bytes: &[u8]) -> Result<String> {
+        Ok(String::new())
     }
 }
 
