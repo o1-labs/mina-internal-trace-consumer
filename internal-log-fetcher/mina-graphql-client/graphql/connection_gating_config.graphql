@@ -1,0 +1,15 @@
+query ConnectionGatingConfigQuery {
+    connectionGatingConfig {
+        trustedPeers {
+            peerId
+            host
+            libp2pPort
+        }
+        bannedPeers {
+            peerId
+            host
+            libp2pPort
+        }
+        isolate
+    }
+}

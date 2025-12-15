@@ -1,0 +1,3 @@
+mutation UpdateGatingQuery ($input: GatingUpdate!) {
+    updateGating(input: $input)
+}
