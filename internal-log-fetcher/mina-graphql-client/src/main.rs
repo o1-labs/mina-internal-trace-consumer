@@ -1,8 +1,10 @@
 use anyhow::Result;
+use log::info;
 use mina_graphql_client::{
     GatingUpdate, MinaClientConfig, MinaGraphQLClient, NetworkPeer, PaymentsDetails,
     ZkappCommandsDetails,
 };
+use serde::Serialize;
 use structopt::StructOpt;
 use url::Url;
 
@@ -19,6 +21,10 @@ struct Cli {
     #[structopt(name = "address", env = "ADDRESS")]
     /// Address in format `host:port` of the graphql server.
     address: String,
+
+    #[structopt(long, short = "j")]
+    /// Output results in JSON format for programmatic use
+    json: bool,
 
     #[structopt(subcommand, about = "The command to run.")]
     cmd: Command,
@@ -190,27 +196,29 @@ fn parse_network_peer(s: &str) -> Result<NetworkPeer> {
     })
 }
 
-impl InputGatingUpdate {
-    fn into_gating_update(self) -> Result<GatingUpdate> {
-        let added_peers: Result<Vec<NetworkPeer>> = self
+impl std::convert::TryFrom<InputGatingUpdate> for GatingUpdate {
+    type Error = anyhow::Error;
+
+    fn try_from(value: InputGatingUpdate) -> Result<Self, Self::Error> {
+        let added_peers: Result<Vec<NetworkPeer>> = value
             .added_peers
             .iter()
             .map(|s| parse_network_peer(s))
             .collect();
-        let banned_peers: Result<Vec<NetworkPeer>> = self
+        let banned_peers: Result<Vec<NetworkPeer>> = value
             .banned_peers
             .iter()
             .map(|s| parse_network_peer(s))
             .collect();
-        let trusted_peers: Result<Vec<NetworkPeer>> = self
+        let trusted_peers: Result<Vec<NetworkPeer>> = value
             .trusted_peers
             .iter()
             .map(|s| parse_network_peer(s))
             .collect();
 
         Ok(GatingUpdate {
-            clean_added_peers: self.clean_added_peers,
-            isolate: self.isolate,
+            clean_added_peers: value.clean_added_peers,
+            isolate: value.isolate,
             added_peers: added_peers?,
             banned_peers: banned_peers?,
             trusted_peers: trusted_peers?,
@@ -254,6 +262,44 @@ enum Command {
     GetPeers,
 }
 
+/// Output structures for JSON serialization
+#[derive(Debug, Serialize)]
+struct PeerOutput {
+    peer_id: String,
+    host: String,
+    libp2p_port: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct ConnectionGatingOutput {
+    isolate: bool,
+    trusted_peers: Vec<PeerOutput>,
+    banned_peers: Vec<PeerOutput>,
+}
+
+#[derive(Debug, Serialize)]
+struct FetchLogsOutput {
+    new_logs_available: bool,
+    logs_count: usize,
+    logs: String,
+}
+
+#[derive(Debug, Serialize)]
+struct GenericOutput {
+    result: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SlotsWonOutput {
+    slots: Vec<i64>,
+}
+
+/// Helper function to output data in JSON or human-readable format
+fn output_json<T: Serialize>(data: &T) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(data)?);
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -277,89 +323,146 @@ async fn main() -> Result<()> {
     match opt.cmd {
         Command::Auth => {
             client.authorize().await?;
-            println!("authorized");
+            info!("authorized");
         }
         Command::FetchMoreLogs => {
             client.authorize().await?;
-            println!("authorized");
-            let (last_log_id, logs) = client.fetch_more_logs().await?;
-            println!("last log id: {}", last_log_id);
-            println!("logs: {:#?}", logs);
+            info!("authorized");
+            let (new_logs_available, logs) = client.fetch_more_logs().await?;
+            if opt.json {
+                output_json(&FetchLogsOutput {
+                    new_logs_available,
+                    logs_count: logs.len(),
+                    logs: format!("{:#?}", logs),
+                })?;
+            } else {
+                println!("new logs available: {}", new_logs_available);
+                println!("logs: {:#?}", logs);
+            }
         }
         Command::FlushLogs => {
             client.authorize().await?;
-            println!("authorized");
+            info!("authorized");
             client.flush_logs().await?;
-            println!("flushed logs");
+            info!("flushed logs");
         }
         Command::ResetZkappSoftLimit => {
             client.authorize().await?;
-            println!("authorized");
+            info!("authorized");
             client.reset_zkapp_soft_limit_query().await?;
+            info!("reset zkapp soft limit");
         }
         Command::ScheduleZkappPayments(cmd) => {
             client.authorize().await?;
-            println!("authorized");
+            info!("authorized");
             client.schedule_zkapp_payments(cmd.into()).await?;
+            info!("scheduled zkapp payments");
         }
         Command::SchedulePayments(cmd) => {
             client.authorize().await?;
-            println!("authorized");
+            info!("authorized");
             let handle = client.schedule_payments(cmd.into()).await?;
-            println!("Scheduled payments with handle: {}", handle);
+            if opt.json {
+                output_json(&GenericOutput {
+                    result: handle,
+                })?;
+            } else {
+                println!("Scheduled payments with handle: {}", handle);
+            }
         }
         Command::StopPayments { handle } => {
             client.authorize().await?;
-            println!("authorized");
+            info!("authorized");
             let result = client.stop_payments(handle).await?;
-            println!("Stop payments result: {}", result);
+            if opt.json {
+                output_json(&GenericOutput { result })?;
+            } else {
+                println!("Stop payments result: {}", result);
+            }
         }
         Command::UpdateGating(cmd) => {
             client.authorize().await?;
-            println!("authorized");
-            let gating_update = cmd.into_gating_update()?;
+            info!("authorized");
+            let gating_update: GatingUpdate = cmd.try_into()?;
             let result = client.update_gating(gating_update).await?;
-            println!("Update gating result: {}", result);
+            if opt.json {
+                output_json(&GenericOutput { result })?;
+            } else {
+                println!("Update gating result: {}", result);
+            }
         }
         Command::SlotsWon => {
             client.authorize().await?;
-            println!("authorized");
+            info!("authorized");
             let slots = client.slots_won().await?;
-            println!("Slots won: {:?}", slots);
+            if opt.json {
+                output_json(&SlotsWonOutput { slots })?;
+            } else {
+                println!("Slots won: {:?}", slots);
+            }
         }
         Command::StopDaemon {
             delay_seconds,
             clean_config,
         } => {
             client.authorize().await?;
-            println!("authorized");
+            info!("authorized");
             let clean_config_opt = if clean_config { Some(true) } else { None };
             let result = client.stop_daemon(delay_seconds, clean_config_opt).await?;
-            println!("Stop daemon result: {}", result);
+            if opt.json {
+                output_json(&GenericOutput { result })?;
+            } else {
+                println!("Stop daemon result: {}", result);
+            }
         }
         Command::ConnectionGatingConfig => {
             let config = client.connection_gating_config().await?;
-            println!("\nConnection Gating Configuration:");
-            println!("================================");
-            println!("Isolate mode: {}", config.isolate);
-            println!("\nTrusted Peers ({}):", config.trusted_peers.len());
-            for peer in &config.trusted_peers {
-                println!("  - {} ({}:{})", peer.peer_id, peer.host, peer.libp2p_port);
-            }
-            println!("\nBanned Peers ({}):", config.banned_peers.len());
-            for peer in &config.banned_peers {
-                println!("  - {} ({}:{})", peer.peer_id, peer.host, peer.libp2p_port);
+            if opt.json {
+                output_json(&ConnectionGatingOutput {
+                    isolate: config.isolate,
+                    trusted_peers: config.trusted_peers.iter().map(|p| PeerOutput {
+                        peer_id: p.peer_id.clone(),
+                        host: p.host.clone(),
+                        libp2p_port: p.libp2p_port,
+                    }).collect(),
+                    banned_peers: config.banned_peers.iter().map(|p| PeerOutput {
+                        peer_id: p.peer_id.clone(),
+                        host: p.host.clone(),
+                        libp2p_port: p.libp2p_port,
+                    }).collect(),
+                })?;
+            } else {
+                println!("\nConnection Gating Configuration:");
+                println!("================================");
+                println!("Isolate mode: {}", config.isolate);
+                println!("\nTrusted Peers ({}):", config.trusted_peers.len());
+                for peer in &config.trusted_peers {
+                    println!("  - {} ({}:{})", peer.peer_id, peer.host, peer.libp2p_port);
+                }
+                println!("\nBanned Peers ({}):", config.banned_peers.len());
+                for peer in &config.banned_peers {
+                    println!("  - {} ({}:{})", peer.peer_id, peer.host, peer.libp2p_port);
+                }
             }
         }
         Command::GetPeers => {
             let peers = client.get_peers().await?;
-            println!("\nConnected Peers ({}):", peers.len());
-            println!("===================");
-            for peer in &peers {
-                println!("Peer ID:      {}", peer.peer_id);
-                println!("Host:         {}", peer.host);
-                println!("Libp2p Port:  {}", peer.libp2p_port);
-                println!("---");
+            if opt.json {
+                let peer_outputs: Vec<PeerOutput> = peers.iter().map(|p| PeerOutput {
+                    peer_id: p.peer_id.clone(),
+                    host: p.host.clone(),
+                    libp2p_port: p.libp2p_port,
+                }).collect();
+                output_json(&peer_outputs)?;
+            } else {
+                println!("\nConnected Peers ({}):", peers.len());
+                println!("===================");
+                for peer in &peers {
+                    println!("Peer ID:      {}", peer.peer_id);
+                    println!("Host:         {}", peer.host);
+                    println!("Libp2p Port:  {}", peer.libp2p_port);
+                    println!("---");
+                }
             }
         }
     };

@@ -1481,6 +1481,7 @@ dependencies = [
  "futures-util",
  "graphql_client",
  "httpmock",
+ "log",
  "object_store",
  "rand 0.7.3",
  "reqwest",

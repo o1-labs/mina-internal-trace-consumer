@@ -14,7 +14,7 @@ pub(crate) struct BasicAuthenticator {}
 
 pub(crate) struct SequentialAuthenticator {}
 
-pub(crate) struct NoAuthenticator {}
+pub(crate) struct FakeAuthenticator {}
 
 pub(crate) fn sign_data(keypair: &ed25519_dalek::Keypair, data: &[u8]) -> Vec<u8> {
     let signature = keypair.sign(data);
@@ -55,22 +55,25 @@ impl Authenticator for SequentialAuthenticator {
     }
 }
 
-impl Authenticator for NoAuthenticator {
+/// This is a fake authenticator used for testing purposes only.
+/// It does not perform any actual authentication or signing.
+/// Using this in production will result in authentication failures.
+impl Authenticator for FakeAuthenticator {
     fn signature_header(_server: &MinaGraphQLClient, _body_bytes: &[u8]) -> Result<String> {
-        Ok(String::new())
+        Ok(String::from("This is fake authenticator"))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mina_server::{AuthorizationInfo, MinaServer};
+    use crate::mina_client::{AuthorizationInfo, MinaGraphQLClient as MinaServer};
 
     const TEST_SECRET_KEY_BASE64: &str = "SzhpFfwa6RMFQTLLTyoriUJrUXYY9kyYxbNu5DsCm1k=";
     const TEST_PUBLIC_KEY_BASE64: &str = "BaG9HYTNxkqyX7haFnz/HXL9FhYwS4gdQ7uYWiStgoY=";
     const TEST_SERVER_UUID: &str = "24511be6-320d-4ef2-8dff-89916bcb6751";
 
-    // Helper function to create a MinaServer instance for testing
+    // Helper function to create a MinaGraphQLClient instance for testing
     fn create_test_server() -> MinaServer {
         let sk_bytes = general_purpose::STANDARD
             .decode(TEST_SECRET_KEY_BASE64)
@@ -84,18 +87,19 @@ mod tests {
             public: public_key,
         };
         MinaServer {
+            config: crate::mina_client::MinaClientConfig {
+                address: "localhost".to_string(),
+                graphql_port: 3085,
+                use_https: false,
+                secret_key_base64: TEST_SECRET_KEY_BASE64.to_string(),
+            },
             pk_base64: TEST_PUBLIC_KEY_BASE64.to_string(),
             keypair,
+            last_log_id: 1,
             authorization_info: Some(AuthorizationInfo {
                 server_uuid: TEST_SERVER_UUID.to_string(),
                 signer_sequence_number: 1,
             }),
-            graphql_uri: "http://localhost".to_string(),
-            last_log_id: 1,
-            output_dir_path: "/tmp".into(),
-            main_trace_file: None,
-            verifier_trace_file: None,
-            prover_trace_file: None,
         }
     }
 

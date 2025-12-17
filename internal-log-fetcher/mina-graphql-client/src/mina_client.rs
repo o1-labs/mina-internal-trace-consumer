@@ -1,5 +1,5 @@
 use crate::authentication::{
-    Authenticator, BasicAuthenticator, NoAuthenticator, SequentialAuthenticator,
+    Authenticator, BasicAuthenticator, FakeAuthenticator, SequentialAuthenticator,
 };
 use crate::graphql;
 use crate::graphql::schedule_payments_query::PaymentsDetails;
@@ -313,7 +313,7 @@ impl MinaGraphQLClient {
         let client = reqwest::Client::new();
         let variables = graphql::connection_gating_config_query::Variables {};
         let response = self
-            .post_graphql::<graphql::ConnectionGatingConfigQuery, NoAuthenticator>(
+            .post_graphql::<graphql::ConnectionGatingConfigQuery, FakeAuthenticator>(
                 &client, variables,
             )
             .await?;
@@ -334,7 +334,7 @@ impl MinaGraphQLClient {
         let client = reqwest::Client::new();
         let variables = graphql::get_peers_query::Variables {};
         let response = self
-            .post_graphql::<graphql::GetPeersQuery, NoAuthenticator>(&client, variables)
+            .post_graphql::<graphql::GetPeersQuery, FakeAuthenticator>(&client, variables)
             .await?;
 
         if let Some(errors) = response.errors {
