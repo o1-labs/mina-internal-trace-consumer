@@ -1,0 +1,3 @@
+mutation StopPaymentsQuery ($handle: String!) {
+    stopPayments(handle: $handle)
+}

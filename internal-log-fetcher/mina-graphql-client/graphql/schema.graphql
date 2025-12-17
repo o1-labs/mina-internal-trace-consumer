@@ -112,6 +112,14 @@ type mutation {
   zkAppCommandLimit(
     limit: [Int]
   ): String!
+
+  """Stop the Mina daemon"""
+  stopDaemon(
+    """Seconds to delay before stopping daemon (minimum 5)"""
+    delaySeconds: Int
+    """Whether to remove saved configuration data (default false)"""
+    cleanConfig: Boolean
+  ): String!
 }
 
 """Network identifiers for another protocol participant"""
@@ -204,7 +212,37 @@ type query {
     """Least log ID to start with"""
     startLogId: Int!
   ): [ItnLog!]!
+
+  """The rules that the libp2p helper will use to determine which connections to permit"""
+  connectionGatingConfig: ConnectionGatingConfig!
+
+  """List of peers that the daemon is currently connected to"""
+  getPeers: [Peer!]!
 }
 
 """String representing a uint16 number in base 10"""
 scalar UInt16
+
+"""Peer information"""
+type Peer {
+  """base58-encoded peer ID"""
+  peerId: String!
+
+  """IP address of the peer"""
+  host: String!
+
+  """libp2p port of the peer"""
+  libp2pPort: Int!
+}
+
+"""Connection gating configuration"""
+type ConnectionGatingConfig {
+  """Peers we will always allow connections from"""
+  trustedPeers: [Peer!]!
+
+  """Peers we will never allow connections from (unless they are also trusted!)"""
+  bannedPeers: [Peer!]!
+
+  """If true, no connections will be allowed unless they are from a trusted peer"""
+  isolate: Boolean!
+}
