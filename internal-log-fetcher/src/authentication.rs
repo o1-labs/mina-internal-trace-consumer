@@ -64,31 +64,21 @@ mod tests {
 
     // Helper function to create a MinaServer instance for testing
     fn create_test_server() -> MinaServer {
-        let sk_bytes = general_purpose::STANDARD
-            .decode(TEST_SECRET_KEY_BASE64)
-            .expect("Failed to decode base64 secret key");
-        let secret_key = ed25519_dalek::SecretKey::from_bytes(&sk_bytes)
-            .expect("Failed to interpret secret key bytes");
-        // should match `TEST_PUBLIC_KEY_BASE64`
-        let public_key: ed25519_dalek::PublicKey = (&secret_key).into();
-        let keypair = ed25519_dalek::Keypair {
-            secret: secret_key,
-            public: public_key,
-        };
-        MinaServer {
-            pk_base64: TEST_PUBLIC_KEY_BASE64.to_string(),
-            keypair,
-            authorization_info: Some(AuthorizationInfo {
-                server_uuid: TEST_SERVER_UUID.to_string(),
-                signer_sequence_number: 1,
-            }),
-            graphql_uri: "http://localhost".to_string(),
-            last_log_id: 1,
-            output_dir_path: "/tmp".into(),
-            main_trace_file: None,
-            verifier_trace_file: None,
-            prover_trace_file: None,
-        }
+        use crate::mina_server::MinaServerConfig;
+
+        let mut server = MinaServer::new(MinaServerConfig {
+            address: "localhost".to_string(),
+            graphql_port: 80,
+            use_https: false,
+            secret_key_base64: TEST_SECRET_KEY_BASE64.to_string(),
+            output_dir_path: std::env::temp_dir().join("mina-auth-test"),
+        });
+        server.authorization_info = Some(AuthorizationInfo {
+            server_uuid: TEST_SERVER_UUID.to_string(),
+            signer_sequence_number: 1,
+        });
+        server.last_log_id = 1;
+        server
     }
 
     #[test]

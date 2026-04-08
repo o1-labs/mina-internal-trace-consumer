@@ -5,7 +5,6 @@
 #![allow(dead_code)]
 
 use anyhow::{Context, Result};
-use mina_graphql_client::MinaClientConfig;
 use node::NodeIdentity;
 use rpc::handlers::NodeDescription;
 use std::{
@@ -20,7 +19,9 @@ use tracing::{debug, error, info};
 
 use crate::utils::{load_node_name_map, read_secret_key_base64};
 
+mod authentication;
 mod discovery;
+mod graphql;
 mod log_entry;
 mod mina_server;
 mod node;
@@ -334,12 +335,10 @@ impl Manager {
         }
 
         let config = mina_server::MinaServerConfig {
-            client_config: MinaClientConfig {
-                secret_key_base64: self.secret_key_base64.clone(),
-                address: node.ip.clone(),
-                graphql_port: node.graphql_port,
-                use_https: false,
-            },
+            secret_key_base64: self.secret_key_base64.clone(),
+            address: node.ip.clone(),
+            graphql_port: node.graphql_port,
+            use_https: false,
             output_dir_path,
         };
         let consumer_executable_path = self.consumer_executable_path.clone().into();
