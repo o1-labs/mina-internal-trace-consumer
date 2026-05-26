@@ -446,7 +446,7 @@ let add_filename_prefix original_path ~prefix =
   concat (dirname original_path) (prefix ^ basename original_path)
 
 let open_database_or_fail db_uri =
-  match Caqti_async.connect_pool db_uri with
+  match Caqti_async.connect_pool ~max_size:50 db_uri with
   | Error error ->
       Async.Log.Global.error "Failure when opening database: %s"
         (Caqti_error.show error) ;
