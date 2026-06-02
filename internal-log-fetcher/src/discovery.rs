@@ -18,7 +18,7 @@ use crate::node::NodeIdentity;
 struct MetaToBeSaved {
     remote_addr: String,
     submitter: String,
-    graphql_control_port: u16,
+    graphql_control_port: Option<u16>,
 }
 
 struct AwsConfig {
@@ -114,9 +114,17 @@ pub async fn fetch_online(
     let mut results = HashSet::new();
 
     for meta in meta_array {
+        let Some(graphql_control_port) = meta.graphql_control_port else {
+            warn!(
+                "Skipping discovered node {} because graphql_control_port is missing",
+                meta.remote_addr
+            );
+            continue;
+        };
+
         let node = new_node_identity(
             &meta.remote_addr,
-            meta.graphql_control_port,
+            graphql_control_port,
             meta.submitter.clone(),
             host_overrides,
         );
@@ -173,9 +181,17 @@ async fn discover_aws(
     });
 
     for (_, meta) in aws_results {
+        let Some(graphql_control_port) = meta.graphql_control_port else {
+            warn!(
+                "Skipping discovered node {} because graphql_control_port is missing",
+                meta.remote_addr
+            );
+            continue;
+        };
+
         let node = new_node_identity(
             &meta.remote_addr,
-            meta.graphql_control_port,
+            graphql_control_port,
             meta.submitter.clone(),
             host_overrides,
         );
