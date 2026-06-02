@@ -519,6 +519,10 @@ mod tests {
                 "remote_addr": "10.233.88.128",
                 "submitter": "B62qjRMUQStdTQwkBLqAXVL3XKSZJCS3g5JGwKnMtszjnBwZhQHqwcz",
                 "graphql_control_port": 20001
+            },
+            {
+                "remote_addr": "10.233.90.128",
+                "submitter": "B62qmissingGraphqlControlPort"
             }
         ]
         "#;
