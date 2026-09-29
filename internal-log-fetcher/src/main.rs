@@ -5,7 +5,7 @@
 #![allow(dead_code)]
 
 use anyhow::{Context, Result};
-use mina_graphql_client::MinaClientConfig;
+use mina_sdk::itn::ItnKey;
 use node::NodeIdentity;
 use rpc::handlers::NodeDescription;
 use std::{
@@ -93,7 +93,7 @@ pub struct Manager {
     nodes: HashMap<NodeIdentity, NodeInfo>,
     next_internal_tracing_port: u16,
     node_discovery: NodeDiscoveryMode,
-    secret_key_base64: String,
+    itn_key: ItnKey,
     consumer_executable_path: String,
     node_names: HashMap<String, String>,
     forced_state: ForcedState,
@@ -107,7 +107,8 @@ pub struct SharedAvailableNodes(pub Arc<RwLock<HashSet<NodeDescription>>>);
 
 impl Manager {
     fn try_new(opts: Opts) -> Result<Self> {
-        let secret_key_base64 = read_secret_key_base64(&opts.secret_key_path)?;
+        let itn_key = ItnKey::from_base64(&read_secret_key_base64(&opts.secret_key_path)?)
+            .with_context(|| format!("reading the ITN key {}", opts.secret_key_path.display()))?;
         let node_discovery = match &opts.target {
             Target::NodeAddressPort {
                 address,
@@ -136,7 +137,7 @@ impl Manager {
             nodes: HashMap::new(),
             next_internal_tracing_port: 11000,
             node_discovery,
-            secret_key_base64,
+            itn_key,
             consumer_executable_path,
             node_names,
             forced_state: Default::default(),
@@ -334,12 +335,8 @@ impl Manager {
         }
 
         let config = mina_server::MinaServerConfig {
-            client_config: MinaClientConfig {
-                secret_key_base64: self.secret_key_base64.clone(),
-                address: node.ip.clone(),
-                graphql_port: node.graphql_port,
-                use_https: false,
-            },
+            itn_uri: format!("http://{}:{}/graphql", node.ip, node.graphql_port),
+            key: self.itn_key.clone(),
             output_dir_path,
         };
         let consumer_executable_path = self.consumer_executable_path.clone().into();

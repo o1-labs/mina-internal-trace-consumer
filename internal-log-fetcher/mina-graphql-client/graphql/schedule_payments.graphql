@@ -1,3 +1,0 @@
-mutation SchedulePaymentsQuery ($input: PaymentsDetails!) {
-    schedulePayments(input: $input)
-}

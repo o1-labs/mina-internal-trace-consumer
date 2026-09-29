@@ -1,3 +1,0 @@
-mutation StopDaemonQuery($delaySeconds: Int, $cleanConfig: Boolean) {
-    stopDaemon(delaySeconds: $delaySeconds, cleanConfig: $cleanConfig)
-}

@@ -48,3 +48,26 @@ docker run \
 ```
 
 will run the internal trace consumer and expose the GraphQL server in `http://localhost:9080/graphql`.
+
+## Internal log fetcher and the ITN debug CLI
+
+`internal-log-fetcher/` reads each node's internal logs through the daemon's
+ITN GraphQL server (`ITN_FEATURES=1`, `--itn-graphql-port`, `--itn-keys`) with
+[`mina-sdk`](https://github.com/o1-labs/mina-sdk-rust) (feature `itn`), and
+writes them as trace files for the consumer. Its key (`-k`) is a base64
+ed25519 seed; the daemon's `--itn-keys` must list the matching public key.
+
+The same crate builds `mina-graphql-client`, a debug CLI for the ITN server:
+
+```sh
+cd internal-log-fetcher
+KEY=<base64 seed> ADDRESS=http://<node>:<itn port> \
+  cargo run --bin mina-graphql-client -- --help
+```
+
+It runs `auth`, `fetch-more-logs`, `flush-logs`, `slots-won`,
+`schedule-payments`, `schedule-zkapp-payments`, `stop-payments`,
+`update-gating`, `reset-zkapp-soft-limit` and `stop-daemon`; `--json` prints
+machine-readable output. `get-peers` and `connection-gating-config` send
+unsigned public GraphQL, so for them `ADDRESS` is the node's public port
+(3085 by default).

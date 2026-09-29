@@ -3,17 +3,16 @@ name = "internal-log-fetcher"
 version = "0.1.0"
 authors = ["Bruno Deferrari <bruno.deferrari@viablesystems.io>"]
 edition = "2021"
+# The Dockerfile (RUST_VERSION) and the Nix flakes build with this toolchain.
+rust-version = "1.82"
 license = "Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0"
-base64 = "0.21"
 chrono = "0.4"
-ed25519-dalek = "1"
 futures-util = "0.3"
-graphql_client = { version = "0.12" }
 object_store = { version = "0.6", features = [
   "reqwest",
   "gcp",
@@ -21,7 +20,6 @@ object_store = { version = "0.6", features = [
   "serde_json",
   "aws",
 ] }
-rand = "0.7"
 reqwest = { version = "0.11", features = ["json"] }
 serde = "1.0"
 serde_json = { version = "1", features = ["raw_value"] }
@@ -30,7 +28,9 @@ tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 warp = "0.3"
-mina-graphql-client = { path = "./mina-graphql-client" }
+# ITN GraphQL client (signed requests, internal logs). Pinned to the commit of
+# o1-labs/mina-sdk-rust#18 until a release carries the `itn` feature.
+mina-sdk = { git = "https://github.com/o1-labs/mina-sdk-rust", rev = "4a1aa4bfb15e5bfd6d46e8cf813a3cb7d9fbb05e", features = ["itn"] }
 
 [dev-dependencies]
 httpmock = "0.8.0-alpha.1"
