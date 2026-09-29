@@ -149,7 +149,7 @@ impl Manager {
         host_overrides: Option<Vec<String>>,
     ) -> Result<HashSet<NodeIdentity>> {
         match &mut self.node_discovery {
-            NodeDiscoveryMode::Fixed(id) => Ok(HashSet::from_iter(vec![id.clone()].into_iter())),
+            NodeDiscoveryMode::Fixed(id) => Ok(HashSet::from_iter(vec![id.clone()])),
             NodeDiscoveryMode::Discovery(discovery) => {
                 info!("Performing discovery...");
                 let participants = discovery.discover_participants(host_overrides).await?;
