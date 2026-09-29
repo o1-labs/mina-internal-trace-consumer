@@ -2,16 +2,22 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{log_entry::LogEntry, utils};
 use anyhow::Result;
-use mina_graphql_client::{InternalLogsQueryInternalLogs, MinaClientConfig, MinaGraphQLClient};
+use mina_sdk::itn::{ItnClient, ItnKey, ItnLog};
 use std::{fs::File, io::Write, path::PathBuf};
+use tracing::info;
 
 pub(crate) struct MinaServerConfig {
-    pub(crate) client_config: MinaClientConfig,
+    /// The node's ITN GraphQL endpoint, `http://<ip>:<port>/graphql`.
+    pub(crate) itn_uri: String,
+    pub(crate) key: ItnKey,
     pub(crate) output_dir_path: PathBuf,
 }
 
 pub(crate) struct MinaServer {
-    pub(crate) mina_graphql_client: MinaGraphQLClient,
+    pub(crate) itn_client: ItnClient,
+    /// The ID of the next log to fetch; `internalLogs(startLogId)` includes
+    /// `startLogId` itself.
+    pub(crate) next_log_id: i64,
     pub(crate) output_dir_path: PathBuf,
     pub(crate) main_trace_file: Option<File>,
     pub(crate) verifier_trace_file: Option<File>,
@@ -23,7 +29,8 @@ impl MinaServer {
         std::fs::create_dir_all(&config.output_dir_path).expect("Could not create output dir");
 
         Self {
-            mina_graphql_client: MinaGraphQLClient::from(config.client_config),
+            itn_client: ItnClient::new(&config.itn_uri, config.key),
+            next_log_id: 0,
             output_dir_path: config.output_dir_path,
             // TODO: this should probably be opened as soon as this instance is created and not when log entries are obtained
             // The reason is that the trace consumer expects all the files to be there, and will produce noisy warnings when
@@ -35,10 +42,7 @@ impl MinaServer {
         }
     }
 
-    pub(crate) fn save_log_entries(
-        &mut self,
-        internal_logs: Vec<InternalLogsQueryInternalLogs>,
-    ) -> Result<()> {
+    pub(crate) fn save_log_entries(&mut self, internal_logs: Vec<ItnLog>) -> Result<()> {
         for item in internal_logs {
             if let Some(log_file_handle) = self.file_for_process(&item.process)? {
                 let log = LogEntry::try_from(item).unwrap();
@@ -55,21 +59,31 @@ impl MinaServer {
         Ok(())
     }
 
+    /// Fetch the logs from `next_log_id` on, and move `next_log_id` past
+    /// the last one.
+    pub(crate) async fn fetch_more_logs(&mut self) -> mina_sdk::Result<Vec<ItnLog>> {
+        let logs = self.itn_client.internal_logs(self.next_log_id).await?;
+        if let Some(last) = logs.last() {
+            self.next_log_id = last.id + 1;
+        }
+        info!(
+            "Fetched {} logs from {}, next log ID {}",
+            logs.len(),
+            self.itn_client.graphql_uri(),
+            self.next_log_id
+        );
+        Ok(logs)
+    }
+
     pub async fn authorize_and_run_fetch_loop(&mut self) -> Result<()> {
         // Authorize first
-        self.mina_graphql_client.authorize().await?;
+        self.itn_client.auth().await?;
 
         let mut remaining_retries = 5;
 
         loop {
-            match self.mina_graphql_client.fetch_more_logs().await {
-                Ok((true, logs)) => {
-                    // Process the fetched logs using save_log_entries
-                    self.save_log_entries(logs)?;
-                    remaining_retries = 5;
-                }
-                Ok((false, logs)) => {
-                    // Process logs even when no new logs were found (empty vector)
+            match self.fetch_more_logs().await {
+                Ok(logs) => {
                     self.save_log_entries(logs)?;
                     remaining_retries = 5;
                 }
@@ -79,7 +93,7 @@ impl MinaServer {
 
                     if remaining_retries <= 0 {
                         eprintln!("Finishing fetcher loop");
-                        return Err(error);
+                        return Err(error.into());
                     }
                 }
             }

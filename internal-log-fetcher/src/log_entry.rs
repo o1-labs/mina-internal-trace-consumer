@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::utils::convert_timestamp_to_float;
-use mina_graphql_client::InternalLogsQueryInternalLogs;
+use mina_sdk::itn::ItnLog;
 use serde::ser::{Serialize, SerializeSeq, Serializer};
 use serde_json::Map;
 use std::error::Error;
@@ -29,17 +29,15 @@ impl Serialize for LogEntry {
     }
 }
 
-impl TryFrom<InternalLogsQueryInternalLogs> for LogEntry {
+impl TryFrom<ItnLog> for LogEntry {
     type Error = Box<dyn Error>;
 
-    fn try_from(value: InternalLogsQueryInternalLogs) -> Result<Self, Self::Error> {
+    fn try_from(value: ItnLog) -> Result<Self, Self::Error> {
         let name = value.message;
 
         if name == "@control" {
             let metadata_vec = value.metadata;
-            let metadata_map = Map::<String, serde_json::Value>::from_iter(
-                metadata_vec.into_iter().map(|item| (item.item, item.value)),
-            );
+            let metadata_map = Map::<String, serde_json::Value>::from_iter(metadata_vec);
             let metadata = serde_json::Value::Object(metadata_map);
 
             Ok(LogEntry::Control { metadata })

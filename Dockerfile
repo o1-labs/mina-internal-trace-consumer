@@ -39,11 +39,6 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY ./internal-log-fetcher/Cargo.toml ./internal-log-fetcher/Cargo.lock ./
 COPY ./internal-log-fetcher/src ./src
-COPY ./internal-log-fetcher/graphql ./graphql
-
-COPY ./internal-log-fetcher/mina-graphql-client/Cargo.toml ./internal-log-fetcher/mina-graphql-client/Cargo.lock ./mina-graphql-client/
-COPY ./internal-log-fetcher/mina-graphql-client/src ./mina-graphql-client/src
-COPY ./internal-log-fetcher/mina-graphql-client/graphql ./mina-graphql-client/graphql
 
 # These RUSTFLAGS are required to properly build an alpine binary
 # linked to OpenSSL that doesn't segfault
