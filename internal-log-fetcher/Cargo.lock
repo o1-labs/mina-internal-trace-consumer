@@ -1469,8 +1469,9 @@ dependencies = [
 
 [[package]]
 name = "mina-sdk"
-version = "0.2.0"
-source = "git+https://github.com/o1-labs/mina-sdk-rust?rev=4a1aa4bfb15e5bfd6d46e8cf813a3cb7d9fbb05e#4a1aa4bfb15e5bfd6d46e8cf813a3cb7d9fbb05e"
+version = "0.4.0-rc.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88ee35bae0e620151a353eadb2a4b085ef76d686263a93b5eaf2c07ed9a02d81"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
