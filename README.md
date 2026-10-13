@@ -57,17 +57,5 @@ ITN GraphQL server (`ITN_FEATURES=1`, `--itn-graphql-port`, `--itn-keys`) with
 writes them as trace files for the consumer. Its key (`-k`) is a base64
 ed25519 seed; the daemon's `--itn-keys` must list the matching public key.
 
-The same crate builds `mina-graphql-client`, a debug CLI for the ITN server:
-
-```sh
-cd internal-log-fetcher
-KEY=<base64 seed> ADDRESS=http://<node>:<itn port> \
-  cargo run --bin mina-graphql-client -- --help
-```
-
-It runs `auth`, `fetch-more-logs`, `flush-logs`, `slots-won`,
-`schedule-payments`, `schedule-zkapp-payments`, `stop-payments`,
-`update-gating`, `reset-zkapp-soft-limit` and `stop-daemon`; `--json` prints
-machine-readable output. `get-peers` and `connection-gating-config` send
-unsigned public GraphQL, so for them `ADDRESS` is the node's public port
-(3085 by default).
+The fetcher has no debug CLI. For a signed ITN request by hand, use an SDK's
+ITN client, for example the `itn_internal_logs` example of mina-sdk-rust.
