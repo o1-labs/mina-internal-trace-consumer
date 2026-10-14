@@ -15,7 +15,7 @@
           overlays = [ rust-overlay.overlays.default ];
         };
 
-        rust = pkgs.rust-bin.stable."1.82.0".default;
+        rust = pkgs.rust-bin.stable."1.88.0".default;
 
       in {
         devShells.default = pkgs.mkShell {
